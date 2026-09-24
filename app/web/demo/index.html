@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>eplanet AI Assistant</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark">EP</span>
+        <div>
+          <h1 data-i18n="title">دستیار هوشمند eplanet</h1>
+          <p data-i18n="subtitle">پاسخ‌گویی هوشمند بر پایه دانش تأییدشده</p>
+        </div>
+      </div>
+
+      <div class="top-actions">
+        <div class="view-toggle" role="tablist" aria-label="View">
+          <button type="button" class="view-btn active" data-view="chat" data-i18n="viewChat">گفتگو</button>
+          <button type="button" class="view-btn" data-view="dashboard" data-i18n="viewDashboard">داشبورد دقت</button>
+        </div>
+
+        <div class="status-pill" title="Service status">
+          <span class="status-dot" id="statusDot"></span>
+          <span id="statusText" data-i18n="checking">در حال بررسی…</span>
+        </div>
+
+        <button type="button" class="trace-toggle-btn" id="traceToggleBtn">
+          <span class="trace-toggle-icon">⌘</span>
+          <span data-i18n="hideTrace">بستن جزئیات</span>
+        </button>
+
+        <div class="language-toggle" aria-label="UI language">
+          <button type="button" class="lang-btn active" data-lang="fa">FA</button>
+          <button type="button" class="lang-btn" data-lang="en">EN</button>
+        </div>
+
+        <button type="button" class="new-chat-btn" id="newChatBtn" data-i18n="newChat">
+          گفتگوی جدید
+        </button>
+      </div>
+    </header>
+
+    <main class="workspace" id="workspace">
+      <section class="chat-card" aria-label="Chat">
+        <div class="messages" id="messages" aria-live="polite"></div>
+
+        <form class="composer" id="composer">
+          <textarea
+            id="messageInput"
+            rows="1"
+            dir="auto"
+            autocomplete="off"
+            data-i18n-placeholder="placeholder"
+            placeholder="سؤالت رو اینجا بنویس…"
+          ></textarea>
+          <button type="submit" id="sendButton" class="send-btn" data-i18n="send">ارسال</button>
+        </form>
+
+        <div class="footer-note" data-i18n="footerNote">
+          پاسخ‌ها بر اساس پایگاه دانش تأییدشده eplanet تولید می‌شوند.
+        </div>
+      </section>
+
+      <aside class="trace-panel" id="tracePanel" aria-label="Debug trace">
+        <div class="trace-panel-header">
+          <div>
+            <p class="trace-kicker" data-i18n="traceKicker">پشت‌صحنه</p>
+            <h2 data-i18n="traceTitle">عملکرد بات</h2>
+          </div>
+          <span class="trace-live-badge" data-i18n="liveTrace">Live trace</span>
+        </div>
+
+
+        <div class="trace-empty" id="traceEmpty">
+          <div class="trace-empty-icon">⌘</div>
+          <h3 data-i18n="traceEmptyTitle">هنوز پیامی پردازش نشده</h3>
+          <p data-i18n="traceEmptyText">بعد از ارسال اولین سؤال، جزئیات درک پیام، بازیابی دانش، فیلترها و زمان اجرای هر مرحله اینجا نمایش داده می‌شود.</p>
+        </div>
+
+        <div class="trace-content" id="traceContent" hidden>
+          <section class="trace-section">
+            <div class="trace-section-title">
+              <span data-i18n="understanding">درک پیام</span>
+              <span class="trace-step-number">01</span>
+            </div>
+            <div class="trace-grid" id="traceUnderstanding"></div>
+            <div class="trace-query-wrap">
+              <span class="trace-label" data-i18n="resolvedQuery">پرسش نهایی</span>
+              <p class="trace-query" id="traceResolvedQuery">—</p>
+            </div>
+          </section>
+
+          <section class="trace-section">
+            <div class="trace-section-title">
+              <span data-i18n="context">Context</span>
+              <span class="trace-step-number">02</span>
+            </div>
+            <div class="context-list" id="traceContext"></div>
+          </section>
+
+          <section class="trace-section">
+            <div class="trace-section-title">
+              <span data-i18n="retrieval">بازیابی دانش</span>
+              <span class="trace-step-number">03</span>
+            </div>
+            <div class="trace-grid" id="traceRetrieval"></div>
+          </section>
+
+          <section class="trace-section">
+            <div class="trace-section-title">
+              <span data-i18n="candidates">اسناد نهایی</span>
+              <span class="trace-step-number">04</span>
+            </div>
+            <div class="candidate-list" id="traceCandidates"></div>
+          </section>
+
+          <section class="trace-section" id="blockedSection" hidden>
+            <div class="trace-section-title">
+              <span data-i18n="blocked">اسناد فیلترشده</span>
+              <span class="trace-step-number">05</span>
+            </div>
+            <p class="trace-help" data-i18n="blockedHelp">این اسناد پیدا شدند اما به‌دلیل قوانین دسترسی یا context وارد پاسخ نشدند.</p>
+            <div class="blocked-list" id="traceBlocked"></div>
+          </section>
+
+          <section class="trace-section">
+            <div class="trace-section-title">
+              <span data-i18n="validation">اعتبارسنجی پاسخ</span>
+              <span class="trace-step-number">06</span>
+            </div>
+            <div class="validation-list" id="traceValidation"></div>
+          </section>
+
+          <section class="trace-section">
+            <div class="trace-section-title">
+              <span data-i18n="performance">زمان اجرای مراحل</span>
+              <span class="trace-step-number">07</span>
+            </div>
+            <div class="timing-list" id="traceTiming"></div>
+          </section>
+        </div>
+      </aside>
+    </main>
+
+    <main class="dashboard-view" id="dashboardView" hidden>
+      <div class="dashboard-header">
+        <div>
+          <h2 data-i18n="dashboardTitle">دقت و کیفیت پاسخ‌گویی بات</h2>
+          <p class="dashboard-meta" id="dashboardMeta"></p>
+        </div>
+      </div>
+
+      <div id="dashboardBody">
+        <p class="dashboard-loading" id="dashboardLoading" data-i18n="dashboardLoading">
+          در حال بارگذاری آخرین نتایج ارزیابی…
+        </p>
+      </div>
+    </main>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

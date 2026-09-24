@@ -1,0 +1,82 @@
+{
+  "entity_types": {
+    "platform": {
+      "fuzzy_enabled": true,
+      "fuzzy_threshold": 0.76,
+      "aliases": {
+        "ctrader": "cTrader",
+        "c trader": "cTrader",
+        "سی تریدر": "cTrader",
+        "سی‌تریدر": "cTrader",
+        "mt5": "MT5",
+        "metatrader": "MT5",
+        "metatrader 5": "MT5",
+        "meta trader": "MT5",
+        "meta trader 5": "MT5",
+        "متاتریدر": "MT5",
+        "متا تریدر": "MT5",
+        "متاتریدر 5": "MT5"
+      }
+    },
+    "country": {
+      "fuzzy_enabled": false,
+      "fuzzy_threshold": 0.9,
+      "aliases": {
+        "af": "AF",
+        "afghanistan": "AF",
+        "afghan": "AF",
+        "افغانستان": "AF",
+        "افغان": "AF",
+        "ir": "IR",
+        "iran": "IR",
+        "iranian": "IR",
+        "ایران": "IR",
+        "ایرانی": "IR",
+        "tr": "TR",
+        "turkey": "TR",
+        "türkiye": "TR",
+        "turkiye": "TR",
+        "ترکیه": "TR"
+      }
+    },
+    "account_type": {
+      "fuzzy_enabled": true,
+      "fuzzy_threshold": 0.78,
+      "aliases": {
+        "ecn": "ECN",
+        "ای سی ان": "ECN",
+        "standard": "Standard",
+        "استاندارد": "Standard",
+        "elite": "Elite",
+        "الیت": "Elite",
+        "gold": "Gold",
+        "گلد": "Gold",
+        "social trade": "Social Trade",
+        "social trading": "Social Trade",
+        "سوشال ترید": "Social Trade",
+        "zero commission": "Zero Commission (Islamic)",
+        "zero commission islamic": "Zero Commission (Islamic)",
+        "زیرو کمیسیون": "Zero Commission (Islamic)"
+      }
+    }
+  },
+  "context_field_entity_types": {
+    "nationality": "country",
+    "country_of_residence": "country",
+    "kyc_document_country": "country",
+    "referenced_country": "country"
+  },
+  "conversation": {
+    "short_followup_max_tokens": 4,
+    "pending_context_fuzzy_threshold": 0.78,
+    "pending_context_fuzzy_margin": 0.08,
+    "correction_markers": [
+      "نه منظورم",
+      "منظورم",
+      "نه، منظورم",
+      "i mean",
+      "no i mean",
+      "sorry i mean"
+    ]
+  }
+}

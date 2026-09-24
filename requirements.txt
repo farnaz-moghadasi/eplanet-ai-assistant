@@ -1,0 +1,11 @@
+fastapi
+uvicorn[standard]
+gunicorn
+pydantic
+pydantic-settings
+httpx
+beautifulsoup4
+redis
+qdrant-client
+openai
+anthropic

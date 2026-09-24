@@ -1,0 +1,194 @@
+from __future__ import annotations
+
+import asyncio
+import json
+from datetime import (
+    datetime,
+    timezone,
+)
+from pathlib import Path
+
+from app.core.config import settings
+from app.knowledge.confluence_client import (
+    ConfluenceClient,
+)
+
+
+PAGE_IDS_FILE = Path(
+    "scripts/confluence_page_ids.txt"
+)
+
+
+def read_page_ids() -> list[str]:
+    result: list[str] = []
+    seen: set[str] = set()
+
+    for raw_line in (
+        PAGE_IDS_FILE
+        .read_text(
+            encoding="utf-8"
+        )
+        .splitlines()
+    ):
+        page_id = raw_line.strip()
+
+        if (
+            not page_id
+            or page_id.startswith("#")
+            or page_id in seen
+        ):
+            continue
+
+        seen.add(page_id)
+        result.append(page_id)
+
+    return result
+
+
+async def main() -> None:
+    page_ids = read_page_ids()
+
+    output_path = Path(
+        settings
+        .KNOWLEDGE_SNAPSHOT_PATH
+    )
+
+    output_path.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    client = ConfluenceClient(
+        base_url=(
+            settings.CONFLUENCE_BASE_URL
+        ),
+        cloud_id=(
+            settings.CONFLUENCE_CLOUD_ID
+        ),
+        email=(
+            settings.CONFLUENCE_EMAIL
+        ),
+        api_token=(
+            settings.CONFLUENCE_API_TOKEN
+        ),
+    )
+
+    pages: dict[
+        str,
+        dict,
+    ] = {}
+
+    failures: list[
+        dict[str, str]
+    ] = []
+
+    print(
+        f"Fetching {len(page_ids)} "
+        "Confluence pages..."
+    )
+
+    for index, page_id in enumerate(
+        page_ids,
+        start=1,
+    ):
+        try:
+            page = await client.get_page(
+                page_id
+            )
+
+            pages[
+                str(page_id)
+            ] = page
+
+            print(
+                f"[{index}/{len(page_ids)}] "
+                f"OK {page_id}"
+            )
+
+        except Exception as exc:
+            failures.append(
+                {
+                    "page_id": (
+                        str(page_id)
+                    ),
+                    "error_type": (
+                        exc
+                        .__class__
+                        .__name__
+                    ),
+                }
+            )
+
+            print(
+                f"[{index}/{len(page_ids)}] "
+                f"FAILED {page_id}: "
+                f"{exc.__class__.__name__}"
+            )
+
+    snapshot = {
+        "version": 1,
+        "generated_at": (
+            datetime.now(
+                timezone.utc
+            ).isoformat()
+        ),
+        "requested_pages": len(
+            page_ids
+        ),
+        "stored_pages": len(
+            pages
+        ),
+        "failed_pages": len(
+            failures
+        ),
+        "failures": failures,
+        "pages": pages,
+    }
+
+    temporary_path = (
+        output_path.with_suffix(
+            output_path.suffix
+            + ".tmp"
+        )
+    )
+
+    temporary_path.write_text(
+        json.dumps(
+            snapshot,
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    temporary_path.replace(
+        output_path
+    )
+
+    print()
+    print(
+        "Knowledge snapshot created:"
+    )
+    print(
+        output_path
+    )
+    print(
+        f"Stored pages: {len(pages)}"
+    )
+    print(
+        f"Failed pages: "
+        f"{len(failures)}"
+    )
+
+    if failures:
+        print()
+        print(
+            "WARNING: snapshot was created "
+            "with missing pages."
+        )
+
+
+if __name__ == "__main__":
+    asyncio.run(
+        main()
+    )
