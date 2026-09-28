@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Mapping
 
@@ -40,6 +41,36 @@ class AnswerGenerationService:
     # generation instead, which can extract just the relevant part.
     _MAX_DETERMINISTIC_ANSWER_CHARS = 1200
 
+    # This knowledge base's own authoring convention names each entry in a
+    # comparison list "<Item Name> — <short descriptor>" as a heading
+    # (e.g. "Standard — Standard Trading", "ECN — For Active
+    # Traders"), while a single-topic answer's headings are generic
+    # structural labels (Purpose, Steps, Question, Answer, Useful Links)
+    # that never contain an em dash. A chunk with two or more em-dash
+    # headings is therefore a multi-item comparison table (e.g. every
+    # account type's spec sheet in one chunk) even when it is short enough
+    # to pass the length gate above - dumping it verbatim would still
+    # answer with every item instead of the one the user actually asked
+    # about, so route it through LLM generation instead.
+    _MULTI_ITEM_HEADING_PATTERN = re.compile(
+        r"^#{1,6}\s*[^\n]*—", re.MULTILINE
+    )
+
+    _MIN_MULTI_ITEM_HEADINGS = 2
+
+    # Grounding validates every claim in the generated answer and rejects
+    # the whole answer if even one comes back unsupported (see
+    # GroundingValidationService._validate_response). Merging several
+    # candidates into one answer multiplies the number of claims that
+    # have to independently pass that check, so a trailing, clearly
+    # weaker candidate raises the odds of a false-negative rejection
+    # without meaningfully improving the answer. Only candidates within
+    # this gap of the top (semantic) relevance score are pulled in
+    # alongside it; this has no effect on deterministic-reranker scores,
+    # which live on a much smaller, unrelated scale (see
+    # KnowledgeReranker and HybridRetriever's RRF-based scoring).
+    _MAX_RELEVANCE_GAP_FOR_ADDITIONAL_EVIDENCE = 0.15
+
     def __init__(
         self,
         *,
@@ -50,6 +81,269 @@ class AnswerGenerationService:
         self.llm = llm
         self.max_candidates = max_candidates
         self.max_content_chars = max_content_chars
+
+    _SECTION_HEADING = re.compile(
+        r"(?m)^(#{1,6})[ \t]+(.+?)[ \t]*$"
+    )
+
+    # Knowledge pages are written with structural section labels that
+    # help the people editing them but read as scaffolding when an
+    # approved page is shown to a customer verbatim. Labels are grouped
+    # into families (names normalised: lower-case, no * _ : marks) and
+    # each family gets one display action. The same families appear in
+    # every language, so each holds all its known spellings.
+    #
+    # DROP: the whole section (heading and text) is not shown.
+    _DISPLAY_DROP = frozenset(
+        {
+            # Pointers to other pages, meaningless inside a chat answer.
+            "related articles",
+            "related content",
+            "related links",
+            "مقالات مرتبط",
+            "مقالات ذات صلة",
+            "بابەتی پەیوەندیدار",
+        }
+    )
+
+    # QUESTION / ANSWER: the Q&A template. The "Question" section is
+    # the page's own topic sentence read back to the user, so it is
+    # dropped - but only when a real answer section follows. (One page
+    # puts its whole answer under a lone "Question" heading; there only
+    # the heading goes.)
+    _DISPLAY_QUESTION = frozenset(
+        {
+            "question",
+            "السؤال",
+            "سؤال",
+            "سوال",
+            "پرسیار",
+        }
+    )
+
+    _DISPLAY_ANSWER = frozenset(
+        {
+            "answer",
+            "الإجابة",
+            "الاجابة",
+            "إجابة",
+            "پاسخ",
+            "جواب",
+            "وەڵام",
+        }
+    )
+
+    # UNWRAP: only the heading is dropped; its text (or links) stays.
+    _DISPLAY_UNWRAP = frozenset(
+        {
+            "important notes",
+            "ملاحظات مهمة",
+            "تێبینی گرنگ",
+            "نکات مهم",
+            "problem",
+            "المشكلة",
+            "مشکل",
+            "کێشە",
+            "useful links",
+            "روابط مفيدة",
+            "لینک‌های مفید",
+            "video tutorial",
+            "video tutorials",
+            "الفيديو التعليمي",
+            "فيديو تعليمي",
+            "آموزش ویدیویی",
+            "فێرکاری ڤیدیۆیی",
+            "resource",
+            "resources",
+            "web terminal",
+        }
+    )
+
+    # PURPOSE: usually a one-line restatement of the page title (median
+    # 47 characters across the knowledge base) - dropped entirely. The
+    # few long ones hold real instructions (e.g. the KYC upload page's
+    # "Purpose"), so those keep their text and lose only the heading.
+    _DISPLAY_PURPOSE = frozenset(
+        {
+            "what this helps with",
+            "purpose",
+            "overview",
+            "الهدف",
+            "نظرة عامة",
+            "ئامانج",
+            "کورتە باس",
+            "هدف",
+            "توضیحات",
+        }
+    )
+
+    _MAX_DROPPABLE_PURPOSE_CHARS = 160
+
+    # STEPS: kept (it tells the reader what follows) but labelled in the
+    # page's own language, since the template heading is English.
+    _DISPLAY_STEPS = frozenset(
+        {
+            "steps",
+            "مراحل",
+            "الخطوات",
+            "هەنگاوەکان",
+        }
+    )
+
+    _STEPS_LABELS = {
+        "fa": "مراحل",
+        "en": "Steps",
+        "ar": "الخطوات",
+        "ku": "هەنگاوەکان",
+    }
+
+    @staticmethod
+    def _normalize_heading(
+        name: str,
+    ) -> str:
+        cleaned = re.sub(
+            r"[*_`:\uff1a]+",
+            "",
+            name,
+        )
+
+        return re.sub(
+            r"\s+",
+            " ",
+            cleaned,
+        ).strip().lower()
+
+    @classmethod
+    def to_display_text(
+        cls,
+        content: str,
+        language: str | None = None,
+    ) -> str:
+        """Approved page text as the customer should see it.
+
+        Applies the section-label families above. Headings that are not
+        recognised (e.g. "Android", "Desktop", or a page's own topic
+        sub-headings) are left exactly as written. If nothing would be
+        left, the original text is returned.
+        """
+        text = (content or "").strip()
+
+        matches = list(
+            cls._SECTION_HEADING.finditer(
+                text
+            )
+        )
+
+        if not matches:
+            return text
+
+        steps_label = cls._STEPS_LABELS.get(
+            str(language or "")
+            .strip()
+            .lower()
+        )
+
+        sections = []
+
+        for index, match in enumerate(
+            matches
+        ):
+            end = (
+                matches[index + 1].start()
+                if index + 1 < len(matches)
+                else len(text)
+            )
+
+            sections.append(
+                (
+                    match,
+                    cls._normalize_heading(
+                        match.group(2)
+                    ),
+                    text[
+                        match.end():end
+                    ].strip(),
+                )
+            )
+
+        has_answer = any(
+            name in cls._DISPLAY_ANSWER
+            and body
+            for _, name, body in sections
+        )
+
+        parts: list[str] = []
+
+        preamble = text[
+            : matches[0].start()
+        ].strip()
+
+        if preamble:
+            parts.append(preamble)
+
+        for match, name, body in sections:
+            if name in cls._DISPLAY_DROP:
+                continue
+
+            if name in cls._DISPLAY_QUESTION:
+                if not has_answer and body:
+                    parts.append(body)
+
+                continue
+
+            if (
+                name in cls._DISPLAY_ANSWER
+                or name in cls._DISPLAY_UNWRAP
+            ):
+                if body:
+                    parts.append(body)
+
+                continue
+
+            if name in cls._DISPLAY_PURPOSE:
+                if (
+                    body
+                    and len(body)
+                    > cls
+                    ._MAX_DROPPABLE_PURPOSE_CHARS
+                ):
+                    parts.append(body)
+
+                continue
+
+            if (
+                name in cls._DISPLAY_STEPS
+                and steps_label
+            ):
+                parts.append(
+                    f"{match.group(1)} "
+                    f"{steps_label}"
+                    + (
+                        f"\n\n{body}"
+                        if body
+                        else ""
+                    )
+                )
+
+                continue
+
+            parts.append(
+                match.group(0).strip()
+                + (
+                    f"\n\n{body}"
+                    if body
+                    else ""
+                )
+            )
+
+        return (
+            "\n\n".join(
+                part
+                for part in parts
+                if part
+            ).strip()
+            or text
+        )
 
     def can_generate_deterministically(
         self,
@@ -100,6 +394,18 @@ class AnswerGenerationService:
         ):
             return False
 
+        multi_item_headings = len(
+            self._MULTI_ITEM_HEADING_PATTERN.findall(
+                content
+            )
+        )
+
+        if (
+            multi_item_headings
+            >= self._MIN_MULTI_ITEM_HEADINGS
+        ):
+            return False
+
         return True
 
     def generate_deterministic(
@@ -141,10 +447,14 @@ class AnswerGenerationService:
             .knowledge_key
         )
 
-        content = (
-            candidate.content
-            or ""
-        ).strip()
+        content = self.to_display_text(
+            candidate.content or "",
+            language=getattr(
+                candidate.metadata.language,
+                "value",
+                None,
+            ),
+        )
 
         if not content:
             payload = GeneratedAnswerPayload(
@@ -206,6 +516,30 @@ class AnswerGenerationService:
             },
         )
 
+    def _select_evidence_candidates(
+        self,
+        candidates: list[RerankedCandidate],
+    ) -> list[RerankedCandidate]:
+        pool = candidates[: self.max_candidates]
+
+        if not pool:
+            return []
+
+        top_score = pool[0].rerank_score
+
+        selected = [pool[0]]
+
+        for candidate in pool[1:]:
+            gap = top_score - candidate.rerank_score
+
+            if (
+                gap
+                <= self._MAX_RELEVANCE_GAP_FOR_ADDITIONAL_EVIDENCE
+            ):
+                selected.append(candidate)
+
+        return selected
+
     async def generate(
         self,
         *,
@@ -214,7 +548,9 @@ class AnswerGenerationService:
         candidates: list[RerankedCandidate],
         context: Mapping[str, str] | None = None,
     ) -> GenerationResult:
-        selected = candidates[: self.max_candidates]
+        selected = self._select_evidence_candidates(
+            candidates
+        )
 
         if not selected:
             payload = GeneratedAnswerPayload(

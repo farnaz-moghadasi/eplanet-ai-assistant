@@ -258,30 +258,71 @@
     return row;
   }
 
-  function appendTextWithLinks(container, text) {
-    const pattern = /\[([^\]]+)\]\((https?:\/\/[^\s)]+)(?:\s+"[^"]*")?\)/g;
+  // Answers come back as lightweight markdown (## headings, **bold**,
+  // [text](url) links) rather than plain text. Everything below builds
+  // DOM nodes directly (textContent / createTextNode, never innerHTML
+  // with message content) so this stays safe even though the source
+  // text ultimately comes from an LLM-composed answer.
+  const INLINE_PATTERN = /(\*\*([^*]+)\*\*)|(\[([^\]]+)\]\((https?:\/\/[^\s)]+)(?:\s+"[^"]*")?\))/g;
+
+  function appendInlineFormatted(container, text) {
     let lastIndex = 0;
     let match;
 
-    while ((match = pattern.exec(text)) !== null) {
-      if (match.index > lastIndex) appendMultilineText(container, text.slice(lastIndex, match.index));
-      const link = document.createElement("a");
-      link.href = match[2];
-      link.target = "_blank";
-      link.rel = "noopener noreferrer";
-      link.textContent = match[1];
-      container.appendChild(link);
-      lastIndex = pattern.lastIndex;
+    while ((match = INLINE_PATTERN.exec(text)) !== null) {
+      if (match.index > lastIndex) {
+        container.appendChild(document.createTextNode(text.slice(lastIndex, match.index)));
+      }
+
+      if (match[1] !== undefined) {
+        const strong = document.createElement("strong");
+        strong.textContent = match[2];
+        container.appendChild(strong);
+      } else {
+        const link = document.createElement("a");
+        link.href = match[5];
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        link.textContent = match[4];
+        container.appendChild(link);
+      }
+
+      lastIndex = INLINE_PATTERN.lastIndex;
     }
 
-    if (lastIndex < text.length) appendMultilineText(container, text.slice(lastIndex));
+    if (lastIndex < text.length) {
+      container.appendChild(document.createTextNode(text.slice(lastIndex)));
+    }
   }
 
-  function appendMultilineText(container, text) {
+  function appendMultilineFormatted(container, text) {
     const lines = text.split("\n");
     lines.forEach((line, index) => {
       if (index > 0) container.appendChild(document.createElement("br"));
-      container.appendChild(document.createTextNode(line));
+      appendInlineFormatted(container, line);
+    });
+  }
+
+  function appendRichText(container, text) {
+    const blocks = String(text ?? "").split(/\n{2,}/);
+
+    blocks.forEach((block) => {
+      const trimmed = block.trim();
+      const headingMatch = /^(#{1,6})\s+(.+)$/.exec(trimmed);
+
+      if (headingMatch && !trimmed.includes("\n")) {
+        const level = Math.min(headingMatch[1].length, 3);
+        const heading = document.createElement("div");
+        heading.className = `msg-heading msg-heading-${level}`;
+        appendInlineFormatted(heading, headingMatch[2]);
+        container.appendChild(heading);
+        return;
+      }
+
+      const paragraph = document.createElement("div");
+      paragraph.className = "msg-paragraph";
+      appendMultilineFormatted(paragraph, block);
+      container.appendChild(paragraph);
     });
   }
 
@@ -290,7 +331,7 @@
     const wrapper = document.createElement("div");
     const bubble = document.createElement("div");
     bubble.className = "bubble";
-    appendTextWithLinks(bubble, text);
+    appendRichText(bubble, text);
     wrapper.appendChild(bubble);
 
     if (role === "bot" && citations.length) {

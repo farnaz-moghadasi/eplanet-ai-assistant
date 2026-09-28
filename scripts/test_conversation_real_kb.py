@@ -36,7 +36,7 @@ from app.runtime.context_policy import (
 from app.runtime.entity_registry import (
     EntityRegistry,
 )
-from scripts.test_pipeline_real_kb import (
+from app.runtime.pipeline_builder import (
     build_pipeline,
 )
 

@@ -35,6 +35,10 @@ from app.conversation.state import (
 from app.conversation.understanding import (
     ConversationUnderstandingService,
 )
+from app.conversation.understanding import (
+    CLIENT_SPECIFIC_MARKERS,
+    HOW_TO_MARKERS,
+)
 from app.core.logging import (
     bind_log_context,
     clear_log_context,
@@ -225,7 +229,7 @@ class ConversationService:
     )
 
     _OPENER_RESPONSE_EN = (
-        "Sure, go ahead — I'm listening. What's your question?"
+        "Sure, go ahead  I'm listening. What's your question?"
     )
 
     def __init__(
@@ -421,12 +425,19 @@ class ConversationService:
             )
 
             effective_language = (
-                understanding.language
-                or language
-                or state.language
+                self._canonical_language(
+                    understanding.language
+                    or language
+                    or state.language
+                )
             )
 
             self._apply_referenced_country(
+                understanding=understanding,
+                state=state,
+            )
+
+            self._apply_self_country_correction(
                 understanding=understanding,
                 state=state,
             )
@@ -440,6 +451,44 @@ class ConversationService:
                     ),
                 )
             )
+
+            if (
+                not state.is_authenticated
+                and self._needs_client_data(
+                    understanding=understanding,
+                    message=message,
+                )
+            ):
+                generation_result = (
+                    self
+                    ._build_client_data_unavailable_result(
+                        language=(
+                            effective_language
+                        )
+                    )
+                )
+
+                log_event(
+                    "chat.request.client_data_unavailable",
+                )
+
+                return ConversationServiceResult(
+                    understanding=understanding,
+                    resolved_turn=(
+                        deterministic_turn
+                    ),
+                    retrieval_result=None,
+                    clarification=None,
+                    context_requirement=None,
+                    generation_result=(
+                        generation_result
+                    ),
+                    citation_validation_result=None,
+                    grounding_validation_result=None,
+                    clarification_question=None,
+                    should_generate_answer=False,
+                    knowledge_hints=[],
+                )
 
             semantic_intent = (
                 self._semantic_intent(
@@ -696,11 +745,78 @@ class ConversationService:
                 ),
             )
 
+            if retrieval_result.distinct_options:
+                state.set_pending_context(
+                    "disambiguation"
+                )
+
+                state.pending_disambiguation_options = (
+                    retrieval_result
+                    .distinct_options
+                )
+
+                state.pending_disambiguation_query = (
+                    resolved_query
+                )
+
+                disambiguation_question = (
+                    self
+                    ._build_disambiguation_question(
+                        options=(
+                            retrieval_result
+                            .distinct_options
+                        ),
+                        language=(
+                            effective_language
+                        ),
+                    )
+                )
+
+                log_event(
+                    "chat.request.clarification_required",
+                    clarification_source=(
+                        "disambiguation"
+                    ),
+                    options=(
+                        retrieval_result
+                        .distinct_options
+                    ),
+                    total_duration_ms=round(
+                        (
+                            time.perf_counter()
+                            - started_at
+                        )
+                        * 1000,
+                        2,
+                    ),
+                )
+
+                return ConversationServiceResult(
+                    understanding=understanding,
+                    resolved_turn=resolved_turn,
+                    retrieval_result=(
+                        retrieval_result
+                    ),
+                    clarification=None,
+                    context_requirement=None,
+                    generation_result=None,
+                    citation_validation_result=None,
+                    grounding_validation_result=None,
+                    clarification_question=(
+                        disambiguation_question
+                    ),
+                    should_generate_answer=False,
+                    knowledge_hints=hints,
+                )
+
             clarification = (
                 self.context_policy.decide(
                     retrieval_result=(
                         retrieval_result
-                    )
+                    ),
+                    understanding=(
+                        understanding
+                    ),
                 )
             )
 
@@ -1151,18 +1267,48 @@ class ConversationService:
                 # (including the semantic_min_score floor) - stay
                 # honest instead of silently returning an empty
                 # answer with no explanation.
+                advice = (
+                    self._is_advice_request(
+                        understanding=(
+                            understanding
+                        ),
+                    )
+                )
+
+                out_of_scope = (
+                    not advice
+                    and self._is_out_of_scope(
+                        understanding=(
+                            understanding
+                        ),
+                        retrieval_result=(
+                            retrieval_result
+                        ),
+                    )
+                )
+
                 generation_result = (
                     self
                     ._build_no_candidates_result(
                         language=(
                             effective_language
-                        )
+                        ),
+                        out_of_scope=(
+                            out_of_scope
+                        ),
+                        advice=advice,
                     )
                 )
 
                 record_value(
                     "generation_mode",
-                    "no_eligible_knowledge",
+                    (
+                        "investment_advice"
+                        if advice
+                        else "out_of_scope"
+                        if out_of_scope
+                        else "no_eligible_knowledge"
+                    ),
                 )
 
                 log_event(
@@ -1170,6 +1316,8 @@ class ConversationService:
                     language=(
                         effective_language
                     ),
+                    out_of_scope=out_of_scope,
+                    advice_request=advice,
                 )
 
             final_abstained = (
@@ -1763,15 +1911,73 @@ class ConversationService:
         "پەیوەندی بە پشتیبانی بکە."
     )
 
+    _LANGUAGE_ALIASES = {
+        "english": "en",
+        "persian": "fa",
+        "farsi": "fa",
+        "\u0641\u0627\u0631\u0633\u06cc": "fa",
+        "arabic": "ar",
+        "\u0627\u0644\u0639\u0631\u0628\u064a\u0629": "ar",
+        "kurdish": "ku",
+        "sorani": "ku",
+        "ckb": "ku",
+        "\u06a9\u0648\u0631\u062f\u06cc": "ku",
+    }
+
+    @classmethod
+    def _canonical_language(
+        cls,
+        language: str | None,
+    ) -> str | None:
+        # The understanding model returns the language inconsistently
+        # ("fa", "FA", "English", "Persian (Farsi)", ...). Retrieval
+        # filters compare it to the pages' language codes, so a name
+        # like "English" silently matched no page at all and the user
+        # got "nothing found". Map every spelling to the code.
+        if not language or not str(language).strip():
+            return None
+
+        normalized = (
+            str(language)
+            .strip()
+            .lower()
+        )
+
+        if normalized in cls._LANGUAGE_ALIASES:
+            return cls._LANGUAGE_ALIASES[
+                normalized
+            ]
+
+        first_word = re.split(
+            r"[^\w]+",
+            normalized,
+        )[0]
+
+        return cls._LANGUAGE_ALIASES.get(
+            first_word,
+            normalized,
+        )
+
+    @classmethod
+    def _normalize_language_code(
+        cls,
+        language: str | None,
+    ) -> str:
+        # Fallback messages default to Persian when nothing is known.
+        return (
+            cls._canonical_language(language)
+            or "fa"
+        )
+
     @classmethod
     def _no_answer_fallback_text(
         cls,
         language: str | None,
     ) -> str:
         normalized = (
-            str(language or "fa")
-            .strip()
-            .lower()
+            cls._normalize_language_code(
+                language
+            )
         )
 
         if normalized == "en":
@@ -1785,12 +1991,423 @@ class ConversationService:
 
         return cls._NO_ANSWER_FALLBACK_FA
 
+    # Shown instead of the generic "couldn't find reliable information"
+    # message when the question is clearly outside what this assistant
+    # covers (weather, jokes, capitals, investment advice, ...): telling
+    # the user what it *can* help with is more useful than implying the
+    # knowledge base simply lacks an answer they might rephrase into.
+    _OUT_OF_SCOPE_FA = (
+        "این سؤال خارج از حوزهٔ کاری من هست. من فقط دربارهٔ خدمات "
+        "eplanet کمک می‌کنم؛ مثلاً احراز هویت (KYC)، واریز و برداشت، "
+        "حساب‌های معاملاتی و پلتفرم‌های MT5 و cTrader. اگه سؤالی در "
+        "این زمینه‌ها دارید، بپرسید."
+    )
+
+    _OUT_OF_SCOPE_EN = (
+        "That's outside what I can help with. I can answer questions "
+        "about eplanet services, such as KYC verification, deposits and "
+        "withdrawals, trading accounts, and the MT5 and cTrader "
+        "platforms. Feel free to ask me about any of those."
+    )
+
+    _OUT_OF_SCOPE_AR = (
+        "هذا السؤال خارج نطاق ما أستطيع المساعدة فيه. يمكنني الإجابة "
+        "عن الأسئلة المتعلقة بخدمات eplanet، مثل توثيق الهوية (KYC) "
+        "والإيداع والسحب وحسابات التداول ومنصتي MT5 وcTrader. "
+        "تفضّل بسؤالي عن أي منها."
+    )
+
+    _OUT_OF_SCOPE_KU = (
+        "ئەم پرسیارە لە دەرەوەی بواری کارەکانی منە. من تەنها لەبارەی "
+        "خزمەتگوزارییەکانی eplanet یارمەتی دەدەم، وەک پشتڕاستکردنەوەی "
+        "ناسنامە (KYC)، خستنەسەر و دەرهێنانی پارە، هەژمارەکانی "
+        "مامەڵەکردن و پلاتفۆرمەکانی MT5 و cTrader. ئەگەر پرسیارێکت "
+        "لەم بوارانەدا هەیە، بپرسە."
+    )
+
+    # Shown when the user asks for a buy/sell/hold recommendation, a
+    # signal or a price forecast. The assistant only explains the
+    # service; it must not look like it simply failed to find the
+    # "answer" in the knowledge base.
+    _ADVICE_FA = (
+        "من نمی‌تونم توصیهٔ سرمایه‌گذاری، سیگنال معاملاتی یا پیش‌بینی "
+        "قیمت بدم. اما دربارهٔ حساب‌های معاملاتی، واریز و برداشت، "
+        "احراز هویت (KYC) و پلتفرم‌های MT5 و cTrader خوشحال می‌شم "
+        "کمکتون کنم."
+    )
+
+    _ADVICE_EN = (
+        "I can't give investment advice, trading signals or price "
+        "predictions. I'm happy to help with trading accounts, deposits "
+        "and withdrawals, KYC verification, and the MT5 and cTrader "
+        "platforms, though."
+    )
+
+    _ADVICE_AR = (
+        "لا يمكنني تقديم نصائح استثمارية أو إشارات تداول أو توقعات "
+        "للأسعار. لكن يسعدني مساعدتك في حسابات التداول والإيداع "
+        "والسحب وتوثيق الهوية (KYC) ومنصتي MT5 وcTrader."
+    )
+
+    _ADVICE_KU = (
+        "من ناتوانم ئامۆژگاری وەبەرهێنان، سیگناڵی مامەڵەکردن یان "
+        "پێشبینی نرخ بدەم. بەڵام دڵخۆش دەبم یارمەتیت بدەم لەبارەی "
+        "هەژمارەکانی مامەڵەکردن، خستنەسەر و دەرهێنانی پارە، "
+        "پشتڕاستکردنەوەی ناسنامە (KYC) و پلاتفۆرمەکانی MT5 و cTrader."
+    )
+
+    @classmethod
+    def _advice_text(
+        cls,
+        language: str | None,
+    ) -> str:
+        normalized = (
+            cls._normalize_language_code(
+                language
+            )
+        )
+
+        if normalized == "en":
+            return cls._ADVICE_EN
+
+        if normalized == "ar":
+            return cls._ADVICE_AR
+
+        if normalized == "ku":
+            return cls._ADVICE_KU
+
+        return cls._ADVICE_FA
+
+    @classmethod
+    def _is_advice_request(
+        cls,
+        *,
+        understanding: (
+            ConversationUnderstanding
+        ),
+    ) -> bool:
+        return (
+            understanding.is_advice_request
+            and understanding.domain.value
+            in {"GENERAL", "UNKNOWN"}
+        )
+
+    # Top vector similarity seen for off-topic questions was 0.20-0.41;
+    # real in-scope questions sit at or above ~0.42-0.50. Treated as out
+    # of scope only when ALL of these hold: the understanding step
+    # flagged it off-topic, its domain is GENERAL/UNKNOWN, and nothing in
+    # the knowledge base is even vaguely similar. (Requiring the model's
+    # flag avoids telling a customer that e.g. "what are your support
+    # hours?" is outside my scope just because the KB has no page on it.)
+    _OUT_OF_SCOPE_MAX_VECTOR_SCORE = 0.45
+
+    @classmethod
+    def _out_of_scope_text(
+        cls,
+        language: str | None,
+    ) -> str:
+        normalized = (
+            cls._normalize_language_code(
+                language
+            )
+        )
+
+        if normalized == "en":
+            return cls._OUT_OF_SCOPE_EN
+
+        if normalized == "ar":
+            return cls._OUT_OF_SCOPE_AR
+
+        if normalized == "ku":
+            return cls._OUT_OF_SCOPE_KU
+
+        return cls._OUT_OF_SCOPE_FA
+
+    @classmethod
+    def _is_out_of_scope(
+        cls,
+        *,
+        understanding: (
+            ConversationUnderstanding
+        ),
+        retrieval_result: (
+            RetrievalPipelineResult
+        ),
+    ) -> bool:
+        if not understanding.is_off_topic:
+            return False
+
+        if understanding.domain.value not in {
+            "GENERAL",
+            "UNKNOWN",
+        }:
+            return False
+
+        best_vector_score = max(
+            (
+                item.vector_score
+                for item in (
+                    retrieval_result
+                    .hybrid_candidates
+                )
+                if item.vector_score
+                is not None
+            ),
+            default=0.0,
+        )
+
+        return (
+            best_vector_score
+            < cls._OUT_OF_SCOPE_MAX_VECTOR_SCORE
+        )
+
+    # This project has no live integration to the client's actual
+    # account data anywhere (balance, KYC status, transaction history,
+    # account manager, ...) - is_authenticated/client_id only gate
+    # which KNOWLEDGE PAGES are eligible, not a real data lookup. A
+    # request that needs the user's own live data can never be
+    # answered correctly by retrieval, no matter who is logged in: the
+    # nearest KB match is at best a generic explanation of the concept
+    # (e.g. "what balance means") that reads like an answer without
+    # being one. Handled before retrieval runs at all, not as a
+    # fallback after a misleading answer was already generated.
+    _CLIENT_DATA_UNAVAILABLE_FA = (
+        "من به اطلاعات شخصی و لحظه‌ای حساب شما (مثل موجودی، تراکنش‌ها، "
+        "وضعیت احراز هویت یا مدیر حساب) دسترسی مستقیم ندارم. لطفاً از "
+        "طریق پنل کاربری بررسی کنید یا با پشتیبانی تماس بگیرید."
+    )
+
+    _CLIENT_DATA_UNAVAILABLE_EN = (
+        "I don't have direct access to your personal, real-time account "
+        "data (such as balance, transactions, verification status, or "
+        "your account manager). Please check the client portal or "
+        "contact support for that."
+    )
+
+    _CLIENT_DATA_UNAVAILABLE_AR = (
+        "ليس لدي وصول مباشر إلى بيانات حسابك الشخصية واللحظية (مثل "
+        "الرصيد أو المعاملات أو حالة التحقق أو مدير الحساب). يرجى "
+        "التحقق عبر بوابة العميل أو التواصل مع الدعم."
+    )
+
+    _CLIENT_DATA_UNAVAILABLE_KU = (
+        "من ڕاستەوخۆ دەستم ناگات بە زانیاری کەسی و ڕاستەقینەی هەژمارەکەت "
+        "(وەک باڵانس، مامەڵەکان، دۆخی پشتڕاستکردنەوە یان بەڕێوەبەری "
+        "هەژمار). تکایە لە ڕێگەی پۆرتاڵی کڕیارەوە بزانە یان پەیوەندی بە "
+        "پشتیبانی بکە."
+    )
+
+    @classmethod
+    def _client_data_unavailable_text(
+        cls,
+        language: str | None,
+    ) -> str:
+        normalized = (
+            cls._normalize_language_code(
+                language
+            )
+        )
+
+        if normalized == "en":
+            return cls._CLIENT_DATA_UNAVAILABLE_EN
+
+        if normalized == "ar":
+            return cls._CLIENT_DATA_UNAVAILABLE_AR
+
+        if normalized == "ku":
+            return cls._CLIENT_DATA_UNAVAILABLE_KU
+
+        return cls._CLIENT_DATA_UNAVAILABLE_FA
+
+    @classmethod
+    def _build_client_data_unavailable_result(
+        cls,
+        *,
+        language: str | None,
+    ) -> GenerationResult:
+        payload = GeneratedAnswerPayload(
+            answer=(
+                cls
+                ._client_data_unavailable_text(
+                    language
+                )
+            ),
+            citations=[],
+            abstained=True,
+            abstain_reason=(
+                "CLIENT_DATA_NOT_AVAILABLE"
+            ),
+            needs_handoff=True,
+        )
+
+        return GenerationResult(
+            payload=payload,
+            evidence_candidate_ids=[],
+            evidence_knowledge_keys=[],
+            evidence_pairs=set(),
+        )
+
+    def _needs_client_data(
+        self,
+        *,
+        understanding: (
+            ConversationUnderstanding
+        ),
+        message: str,
+    ) -> bool:
+        if understanding.client_specific:
+            return True
+
+        # Deterministic backstop: the classification model does not
+        # reliably set client_specific=True even for its own textbook
+        # examples (e.g. "what is my account balance?"). Falling
+        # through silently here means a generic KB page gets used to
+        # answer a question about the user's own data, which reads
+        # like a real answer without being one - worse than asking the
+        # model again would be, so this is checked by keyword instead.
+        #
+        # But a personal-account keyword does not always mean "give me
+        # my live data": "how do I verify my account?" or "how do I
+        # change my account password?" both name "my account" while
+        # asking for a procedure, which the knowledge base can answer
+        # normally. Real classification confusion was observed on
+        # client_specific specifically, not on HOW_TO - so a how-to
+        # phrasing is trusted here to mean "this is procedural, not a
+        # live-data request" even when a personal keyword also matches.
+        if understanding.task.value == "HOW_TO":
+            return False
+
+        normalized = message
+
+        if self.entity_registry:
+            normalized = (
+                self.entity_registry
+                .normalize_text(message)
+            )
+
+        if any(
+            marker in normalized
+            for marker in HOW_TO_MARKERS
+        ):
+            return False
+
+        return any(
+            marker in normalized
+            for marker in (
+                CLIENT_SPECIFIC_MARKERS
+            )
+        )
+
+    _DISAMBIGUATION_INTRO_FA = (
+        "این سؤال می‌تونه به چند حالت مختلف مربوط باشه. منظورتون کدومه؟"
+    )
+
+    _DISAMBIGUATION_INTRO_EN = (
+        "This could mean a couple of different things. Which one did "
+        "you mean?"
+    )
+
+    _DISAMBIGUATION_INTRO_AR = (
+        "قد يعني هذا أكثر من شيء. أيهما تقصد؟"
+    )
+
+    _DISAMBIGUATION_INTRO_KU = (
+        "ئەمە دەکرێت چەند مانایەکی جیاواز هەبێت. کامیانت مەبەستە؟"
+    )
+
+    @classmethod
+    def _disambiguation_intro_text(
+        cls,
+        language: str | None,
+    ) -> str:
+        normalized = (
+            cls._normalize_language_code(
+                language
+            )
+        )
+
+        if normalized == "en":
+            return cls._DISAMBIGUATION_INTRO_EN
+
+        if normalized == "ar":
+            return cls._DISAMBIGUATION_INTRO_AR
+
+        if normalized == "ku":
+            return cls._DISAMBIGUATION_INTRO_KU
+
+        return cls._DISAMBIGUATION_INTRO_FA
+
+    @classmethod
+    def _build_disambiguation_question(
+        cls,
+        *,
+        options: list[str],
+        language: str | None,
+    ) -> str:
+        intro = (
+            cls._disambiguation_intro_text(
+                language
+            )
+        )
+
+        numbered = "\n".join(
+            f"{index}) {option}"
+            for index, option in enumerate(
+                options,
+                start=1,
+            )
+        )
+
+        return f"{intro}\n{numbered}"
+
     @classmethod
     def _build_no_candidates_result(
         cls,
         *,
         language: str | None,
+        out_of_scope: bool = False,
+        advice: bool = False,
     ) -> GenerationResult:
+        if advice:
+            payload = GeneratedAnswerPayload(
+                answer=cls._advice_text(
+                    language
+                ),
+                citations=[],
+                abstained=True,
+                abstain_reason=(
+                    "INVESTMENT_ADVICE_NOT_SUPPORTED"
+                ),
+                needs_handoff=False,
+            )
+
+            return GenerationResult(
+                payload=payload,
+                evidence_candidate_ids=[],
+                evidence_knowledge_keys=[],
+                evidence_pairs=set(),
+            )
+
+        if out_of_scope:
+            payload = GeneratedAnswerPayload(
+                answer=(
+                    cls._out_of_scope_text(
+                        language
+                    )
+                ),
+                citations=[],
+                abstained=True,
+                abstain_reason="OUT_OF_SCOPE",
+                needs_handoff=False,
+            )
+
+            return GenerationResult(
+                payload=payload,
+                evidence_candidate_ids=[],
+                evidence_knowledge_keys=[],
+                evidence_pairs=set(),
+            )
+
         payload = GeneratedAnswerPayload(
             answer=(
                 cls
@@ -1812,6 +2429,51 @@ class ConversationService:
             evidence_knowledge_keys=[],
             evidence_pairs=set(),
         )
+
+    @staticmethod
+    def _answer_is_verbatim_cited_content(
+        *,
+        answer: str,
+        cited_candidate_id: str,
+        retrieval_result: (
+            RetrievalPipelineResult
+        ),
+    ) -> bool:
+        for item in (
+            retrieval_result.final_candidates
+        ):
+            candidate = item.candidate.candidate
+
+            if (
+                candidate.candidate_id
+                == cited_candidate_id
+            ):
+                content = (
+                    candidate.content or ""
+                ).strip()
+
+                # The verbatim answer is the page as displayed (the Q&A
+                # template's Question/Answer scaffolding removed), so
+                # accept either form.
+                return bool(content) and (
+                    answer.strip()
+                    in {
+                        content,
+                        AnswerGenerationService
+                        .to_display_text(
+                            content,
+                            language=getattr(
+                                candidate
+                                .metadata
+                                .language,
+                                "value",
+                                None,
+                            ),
+                        ),
+                    }
+                )
+
+        return False
 
     def _can_use_deterministic_grounding(
         self,
@@ -1868,6 +2530,28 @@ class ConversationService:
 
         if len(citations) != 1:
             return False
+
+        # An answer that is literally the cited source text needs no LLM
+        # grounding pass: every "claim" in it is the approved document
+        # itself, so there is nothing the check could catch. Grounding
+        # only verifies an answer against its cited evidence - it cannot
+        # tell whether the *right* document was retrieved, so this holds
+        # no matter which reranker path picked the document. (Before
+        # this, a verbatim answer after the semantic reranker still
+        # paid for a 4-19s LLM grounding call.)
+        if (
+            not understanding.client_specific
+            and self._answer_is_verbatim_cited_content(
+                answer=answer,
+                cited_candidate_id=(
+                    citations[0].candidate_id
+                ),
+                retrieval_result=(
+                    retrieval_result
+                ),
+            )
+        ):
+            return True
 
         if (
             retrieval_result
@@ -2081,6 +2765,78 @@ class ConversationService:
                 state=state,
                 language=language,
             )
+        )
+
+    # Which stored "fact about the user" a corrected country should
+    # overwrite, keyed by the classified domain of the correction
+    # message itself - consistent with how every other context-field
+    # decision in this file is domain-based (ContextRequirementService,
+    # ContextPolicy). KYC content is scoped by the ID document's
+    # country; deposit/withdrawal/account content by residence.
+    _SELF_COUNTRY_FIELD_BY_DOMAIN = {
+        "KYC": "kyc_document_country",
+        "DEPOSIT": "country_of_residence",
+        "WITHDRAWAL": "country_of_residence",
+        "ACCOUNT": "country_of_residence",
+    }
+
+    def _apply_self_country_correction(
+        self,
+        *,
+        understanding: (
+            ConversationUnderstanding
+        ),
+        state: ConversationState,
+    ) -> None:
+        if not understanding.corrects_self_country:
+            return
+
+        countries = [
+            country.strip()
+            for country in (
+                understanding
+                .referenced_countries
+            )
+            if country and country.strip()
+        ]
+
+        if len(countries) != 1:
+            return
+
+        field_name = (
+            self
+            ._SELF_COUNTRY_FIELD_BY_DOMAIN
+            .get(
+                understanding.domain.value
+            )
+        )
+
+        if field_name is None:
+            return
+
+        value = countries[0]
+
+        if self.entity_registry:
+            resolved = (
+                self.entity_registry
+                .resolve_entity(
+                    entity_type="country",
+                    text=value,
+                )
+            )
+
+            if resolved:
+                value = resolved
+
+        state.set_context_field(
+            field_name=field_name,
+            value=value,
+        )
+
+        log_event(
+            "context.self_country_corrected",
+            field=field_name,
+            value=value,
         )
 
     def _apply_referenced_country(

@@ -871,9 +871,13 @@ class EvaluationRunner:
             expected.expected_language
             is not None
             and (
-                understanding.language.upper()
-                != expected
-                .expected_language.upper()
+                understanding.language
+                is None
+                or (
+                    understanding.language.upper()
+                    != expected
+                    .expected_language.upper()
+                )
             )
         ):
             failures.append(

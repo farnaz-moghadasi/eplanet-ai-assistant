@@ -48,6 +48,19 @@ class FakeRetrievalPipeline:
 
 
 class FakeUnderstandingService:
+    def __init__(
+        self,
+        domain=ConversationDomain.GENERAL,
+        is_off_topic=False,
+        is_advice_request=False,
+        task=ConversationTask.HOW_TO,
+    ):
+        self.domain = domain
+        self.is_off_topic = is_off_topic
+        self.is_advice_request = is_advice_request
+        self.client_specific_override = False
+        self.task = task
+
     async def understand(
         self,
         *,
@@ -59,13 +72,13 @@ class FakeUnderstandingService:
                 state.language
                 or "FA"
             ),
-            domain=(
-                ConversationDomain.GENERAL
+            domain=self.domain,
+            is_off_topic=self.is_off_topic,
+            is_advice_request=self.is_advice_request,
+            client_specific=(
+                self.client_specific_override
             ),
-            task=(
-                ConversationTask.HOW_TO
-            ),
-            client_specific=False,
+            task=self.task,
             topic_relation=(
                 TopicRelation.NEW_TOPIC
             ),
@@ -91,6 +104,7 @@ def empty_result(
 
 def make_hybrid_candidate(
     knowledge_key: str,
+    category: str = "TEST",
 ) -> HybridCandidate:
     metadata = KnowledgeMetadata(
         knowledge_key=knowledge_key,
@@ -98,7 +112,7 @@ def make_hybrid_candidate(
             knowledge_key
         ),
         knowledge_type="HOW_TO",
-        category="TEST",
+        category=category,
         status=(
             KnowledgeStatus.APPROVED
         ),
@@ -214,6 +228,10 @@ def build_registry(
 def build_service(
     tmp_path,
     result_factory,
+    domain=ConversationDomain.GENERAL,
+    is_off_topic=False,
+    is_advice_request=False,
+    task=ConversationTask.HOW_TO,
 ):
     registry = build_registry(
         tmp_path
@@ -233,7 +251,12 @@ def build_service(
 
     service = ConversationService(
         understanding_service=(
-            FakeUnderstandingService()
+            FakeUnderstandingService(
+                domain=domain,
+                is_off_topic=is_off_topic,
+                is_advice_request=is_advice_request,
+                task=task,
+            )
         ),
         resolver=resolver,
         retrieval_pipeline=pipeline,
@@ -323,7 +346,8 @@ async def test_missing_context_sets_pending_field(
 ):
     blocked_candidate = (
         make_hybrid_candidate(
-            "KB-COUNTRY-001"
+            "KB-COUNTRY-001",
+            category="KYC",
         )
     )
 
@@ -364,6 +388,7 @@ async def test_missing_context_sets_pending_field(
         build_service(
             tmp_path,
             factory,
+            domain=ConversationDomain.KYC,
         )
     )
 
@@ -635,9 +660,12 @@ async def test_fuzzy_greeting_slm_skips_retrieval(
 async def test_no_candidates_returns_safe_answer_instead_of_blank(
     tmp_path,
 ):
+    # An in-scope product area (ACCOUNT) with nothing eligible in the
+    # knowledge base gets the generic "couldn't find" message + handoff.
     service, pipeline = build_service(
         tmp_path,
         lambda query, context: empty_result(query),
+        domain=ConversationDomain.ACCOUNT,
     )
 
     state = ConversationState()
@@ -655,4 +683,499 @@ async def test_no_candidates_returns_safe_answer_instead_of_blank(
         result.generation_result.payload.abstain_reason
         == "NO_ELIGIBLE_KNOWLEDGE"
     )
+    assert result.generation_result.payload.needs_handoff is True
     assert result.generation_result.payload.answer
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "language,expected_fragment",
+    [
+        ("FA", "خارج از حوزهٔ کاری"),
+        ("EN", "outside what I can help with"),
+        ("AR", "خارج نطاق"),
+        ("KU", "دەرەوەی بواری"),
+    ],
+)
+async def test_off_topic_question_gets_scope_message_not_generic_fallback(
+    tmp_path,
+    language,
+    expected_fragment,
+):
+    # GENERAL/UNKNOWN domain + nothing even vaguely similar in the
+    # knowledge base = clearly off-topic (weather, jokes, ...): say what
+    # the assistant covers instead of implying the answer might exist.
+    service, _ = build_service(
+        tmp_path,
+        lambda query, context: empty_result(query),
+        domain=ConversationDomain.GENERAL,
+        is_off_topic=True,
+    )
+
+    result = await service.handle_message(
+        message="what is the weather like",
+        state=ConversationState(language=language.lower()),
+        language=language,
+    )
+
+    payload = result.generation_result.payload
+
+    assert payload.abstained is True
+    assert payload.abstain_reason == "OUT_OF_SCOPE"
+    assert payload.needs_handoff is False
+    assert expected_fragment in payload.answer
+    assert not payload.citations
+
+
+@pytest.mark.asyncio
+async def test_general_question_with_similar_knowledge_is_not_out_of_scope(
+    tmp_path,
+):
+    # A GENERAL-domain question that does resemble knowledge-base content
+    # (top vector similarity above the off-topic ceiling) but produced no
+    # eligible answer is a knowledge gap, not an off-topic question.
+    similar = make_hybrid_candidate("KB-GEN-SPREAD-FA")
+    similar.vector_score = 0.6
+
+    def factory(query, context):
+        result = empty_result(query)
+        result.hybrid_candidates = [similar]
+        return result
+
+    service, _ = build_service(
+        tmp_path,
+        factory,
+        domain=ConversationDomain.GENERAL,
+    )
+
+    result = await service.handle_message(
+        message="what is a spread",
+        state=ConversationState(),
+        language="EN",
+    )
+
+    payload = result.generation_result.payload
+
+    assert payload.abstain_reason == "NO_ELIGIBLE_KNOWLEDGE"
+    assert payload.needs_handoff is True
+
+
+@pytest.mark.asyncio
+async def test_unflagged_general_question_keeps_generic_fallback(
+    tmp_path,
+):
+    # A question about eplanet that simply is not in the knowledge base
+    # (e.g. support hours) is not flagged off-topic by the understanding
+    # step, so it must not be told it is outside the assistant's scope.
+    service, _ = build_service(
+        tmp_path,
+        lambda query, context: empty_result(query),
+        domain=ConversationDomain.GENERAL,
+        is_off_topic=False,
+    )
+
+    result = await service.handle_message(
+        message="what are your support hours",
+        state=ConversationState(),
+        language="EN",
+    )
+
+    payload = result.generation_result.payload
+
+    assert payload.abstain_reason == "NO_ELIGIBLE_KNOWLEDGE"
+    assert payload.needs_handoff is True
+
+
+@pytest.mark.asyncio
+async def test_language_name_from_understanding_selects_matching_message(
+    tmp_path,
+):
+    # The understanding model sometimes returns the language as a name
+    # ("English") instead of a code ("en"); that must still pick the
+    # English message rather than the Persian default.
+    service, _ = build_service(
+        tmp_path,
+        lambda query, context: empty_result(query),
+        domain=ConversationDomain.GENERAL,
+        is_off_topic=True,
+    )
+
+    result = await service.handle_message(
+        message="what is the capital of france",
+        state=ConversationState(language="English"),
+        language="EN",
+    )
+
+    assert (
+        "outside what I can help with"
+        in result.generation_result.payload.answer
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "language,expected_fragment",
+    [
+        ("FA", "توصیهٔ سرمایه‌گذاری"),
+        ("EN", "can't give investment advice"),
+        ("AR", "نصائح استثمارية"),
+        ("KU", "ئامۆژگاری وەبەرهێنان"),
+    ],
+)
+async def test_investment_advice_request_gets_dedicated_message(
+    tmp_path,
+    language,
+    expected_fragment,
+):
+    # "Should I buy gold today?" is in the trading world but is a request
+    # for a recommendation, not something the knowledge base answers:
+    # say so plainly instead of implying the answer just was not found.
+    service, _ = build_service(
+        tmp_path,
+        lambda query, context: empty_result(query),
+        domain=ConversationDomain.GENERAL,
+        is_advice_request=True,
+    )
+
+    result = await service.handle_message(
+        message="should i buy gold today",
+        state=ConversationState(language=language.lower()),
+        language=language,
+    )
+
+    payload = result.generation_result.payload
+
+    assert payload.abstained is True
+    assert (
+        payload.abstain_reason
+        == "INVESTMENT_ADVICE_NOT_SUPPORTED"
+    )
+    assert payload.needs_handoff is False
+    assert expected_fragment in payload.answer
+    assert not payload.citations
+
+
+def _grounding_skip_inputs(
+    *,
+    answer,
+    client_specific=False,
+    reranker_mode="semantic",
+):
+    from app.citations.validator import (
+        CitationValidationResult,
+    )
+    from app.generation.schemas import (
+        GeneratedAnswerPayload,
+        GeneratedCitation,
+    )
+    from app.generation.service import (
+        GenerationResult,
+    )
+    from app.retrieval.reranker import (
+        RerankedCandidate,
+    )
+
+    # A country-scoped page with a required context field: exactly the
+    # kind of "sensitive" candidate the old fast-path-only skip refused.
+    hybrid = make_hybrid_candidate(
+        "KB-KYC-DOCS-AF-FA",
+        category="KYC",
+    )
+
+    candidate = hybrid.candidate
+
+    retrieval_result = RetrievalPipelineResult(
+        query="q",
+        bm25_candidates=[],
+        vector_candidates=[],
+        hybrid_candidates=[hybrid],
+        eligible_candidates=[hybrid],
+        final_candidates=[
+            RerankedCandidate(
+                candidate=hybrid,
+                rerank_score=0.9,
+                reasons=[],
+            )
+        ],
+        reranker_mode=reranker_mode,
+    )
+
+    generation_result = GenerationResult(
+        payload=GeneratedAnswerPayload(
+            answer=answer,
+            citations=[
+                GeneratedCitation(
+                    candidate_id=candidate.candidate_id,
+                    knowledge_key=(
+                        candidate.metadata.knowledge_key
+                    ),
+                )
+            ],
+            abstained=False,
+            needs_handoff=False,
+        ),
+        evidence_candidate_ids=[
+            candidate.candidate_id
+        ],
+        evidence_knowledge_keys=[
+            candidate.metadata.knowledge_key
+        ],
+        evidence_pairs={
+            (
+                candidate.candidate_id,
+                candidate.metadata.knowledge_key,
+            )
+        },
+    )
+
+    understanding = ConversationUnderstanding(
+        domain=ConversationDomain.KYC,
+        client_specific=client_specific,
+    )
+
+    return dict(
+        understanding=understanding,
+        retrieval_result=retrieval_result,
+        generation_result=generation_result,
+        citation_validation_result=(
+            CitationValidationResult(valid=True)
+        ),
+    )
+
+
+def test_verbatim_answer_skips_llm_grounding_after_semantic_reranker(
+    tmp_path,
+):
+    # The answer IS the cited approved text ("Test content"), so LLM
+    # grounding cannot catch anything - even for a sensitive, scoped page
+    # and even when the semantic reranker (not the fast path) picked it.
+    service, _ = build_service(
+        tmp_path,
+        lambda query, context: empty_result(query),
+    )
+
+    assert (
+        service._can_use_deterministic_grounding(
+            **_grounding_skip_inputs(
+                answer="Test content"
+            )
+        )
+        is True
+    )
+
+
+def test_rewritten_answer_still_needs_llm_grounding(
+    tmp_path,
+):
+    # An LLM-composed answer (not the literal source text) on a sensitive
+    # page must still go through the real grounding check.
+    service, _ = build_service(
+        tmp_path,
+        lambda query, context: empty_result(query),
+    )
+
+    assert (
+        service._can_use_deterministic_grounding(
+            **_grounding_skip_inputs(
+                answer="Test content, plus a claim that is not in it."
+            )
+        )
+        is False
+    )
+
+
+def test_client_specific_verbatim_answer_keeps_llm_grounding(
+    tmp_path,
+):
+    service, _ = build_service(
+        tmp_path,
+        lambda query, context: empty_result(query),
+    )
+
+    assert (
+        service._can_use_deterministic_grounding(
+            **_grounding_skip_inputs(
+                answer="Test content",
+                client_specific=True,
+            )
+        )
+        is False
+    )
+
+
+
+@pytest.mark.parametrize(
+    "raw,expected",
+    [
+        ("fa", "fa"),
+        ("FA", "fa"),
+        ("en", "en"),
+        ("EN", "en"),
+        ("English", "en"),
+        ("english", "en"),
+        ("Persian", "fa"),
+        ("Persian (Farsi)", "fa"),
+        ("Farsi", "fa"),
+        ("Arabic", "ar"),
+        ("Kurdish", "ku"),
+        ("Sorani", "ku"),
+        ("  ", None),
+        (None, None),
+        ("de", "de"),
+    ],
+)
+def test_language_names_map_to_page_language_codes(
+    raw,
+    expected,
+):
+    assert (
+        ConversationService._canonical_language(raw)
+        == expected
+    )
+
+
+@pytest.mark.asyncio
+async def test_language_name_from_model_reaches_retrieval_as_code(
+    tmp_path,
+):
+    # "English" from the understanding step used to be sent to the
+    # language filters as-is and matched no page.
+    service, pipeline = build_service(
+        tmp_path,
+        lambda query, context: empty_result(query),
+    )
+
+    await service.handle_message(
+        message="how do i create a demo account",
+        state=ConversationState(language="English"),
+        language="EN",
+    )
+
+    assert pipeline.calls
+    assert pipeline.calls[0]["language"] == "en"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "message",
+    [
+        "what is my balance",
+        "موجودی من چقدره؟",
+        "آخرین واریزم چقدر بود؟",
+        "ایمیل ثبت‌شده روی حسابم چیه؟",
+    ],
+)
+async def test_unauthenticated_personal_data_question_short_circuits(
+    tmp_path,
+    message,
+):
+    # This project has no live account-data integration for anyone, so
+    # a personal-data question from an unauthenticated session must not
+    # reach retrieval at all - the nearest KB match would be a generic
+    # explanation that reads like an answer without being one.
+    service, pipeline = build_service(
+        tmp_path,
+        lambda query, context: empty_result(query),
+        task=ConversationTask.BALANCE,
+    )
+
+    result = await service.handle_message(
+        message=message,
+        state=ConversationState(),
+        language="EN",
+    )
+
+    assert pipeline.calls == []
+    assert result.retrieval_result is None
+    payload = result.generation_result.payload
+    assert payload.abstained is True
+    assert payload.abstain_reason == "CLIENT_DATA_NOT_AVAILABLE"
+    assert payload.needs_handoff is True
+    assert not payload.citations
+
+
+@pytest.mark.asyncio
+async def test_model_flagged_client_specific_also_short_circuits(
+    tmp_path,
+):
+    # Even when the message has no matching keyword, the model's own
+    # client_specific=True flag must still short-circuit retrieval.
+    service, pipeline = build_service(
+        tmp_path,
+        lambda query, context: empty_result(query),
+        task=ConversationTask.EXPLANATION,
+    )
+    service.understanding_service.client_specific_override = True
+
+    result = await service.handle_message(
+        message="something with no keyword match",
+        state=ConversationState(),
+        language="EN",
+    )
+
+    assert pipeline.calls == []
+    assert (
+        result.generation_result.payload.abstain_reason
+        == "CLIENT_DATA_NOT_AVAILABLE"
+    )
+
+
+@pytest.mark.asyncio
+async def test_authenticated_personal_data_question_still_reaches_retrieval(
+    tmp_path,
+):
+    # An authenticated session may have a real client-only KB page (e.g.
+    # KYC status tracking) that eligibility should still get a chance to
+    # serve - only the unauthenticated case is a guaranteed dead end.
+    service, pipeline = build_service(
+        tmp_path,
+        lambda query, context: empty_result(query),
+    )
+
+    await service.handle_message(
+        message="what is my balance",
+        state=ConversationState(),
+        language="EN",
+        trusted_session=TrustedSessionContext(
+            is_authenticated=True,
+            client_id="CLIENT-123",
+        ),
+    )
+
+    assert len(pipeline.calls) == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "message",
+    [
+        "چطور حسابمو تأیید کنم؟",
+        "رمز حسابم رو چجوری عوض کنم؟",
+        "how do i verify my account?",
+    ],
+)
+async def test_howto_question_about_own_account_is_not_blocked(
+    tmp_path,
+    message,
+):
+    # Regression: "how do I verify/change MY account?" names the
+    # account but asks for a procedure the knowledge base can answer -
+    # it must not be caught by the same gate as "what IS my balance?".
+    service, pipeline = build_service(
+        tmp_path,
+        lambda query, context: empty_result(query),
+        task=ConversationTask.HOW_TO,
+    )
+
+    result = await service.handle_message(
+        message=message,
+        state=ConversationState(),
+        language="FA",
+    )
+
+    assert len(pipeline.calls) == 1
+    assert result.retrieval_result is not None
+    assert (
+        result.generation_result.payload.abstain_reason
+        != "CLIENT_DATA_NOT_AVAILABLE"
+    )

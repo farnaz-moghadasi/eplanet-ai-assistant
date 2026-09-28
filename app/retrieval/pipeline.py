@@ -87,6 +87,15 @@ class RetrievalPipelineResult:
         str | None
     ) = None
 
+    # Set by the semantic reranker only when two or more top candidates
+    # answer genuinely different sub-questions the query left
+    # unresolved (see SEMANTIC_RERANK_SYSTEM_PROMPT rule 10). Consumed
+    # by ConversationService to ask which one was meant instead of
+    # silently picking one.
+    distinct_options: list[str] = field(
+        default_factory=list
+    )
+
 
 class KnowledgeRetrievalPipeline:
     _FAST_PATH_BLOCKED_CATEGORIES = {
@@ -134,6 +143,7 @@ class KnowledgeRetrievalPipeline:
         final_top_k: int = 5,
         fast_path_enabled: bool = True,
         semantic_min_score: float = 0.50,
+        fast_path_min_vector_score: float = 0.45,
     ):
         self.bm25_retriever = (
             bm25_retriever
@@ -183,6 +193,30 @@ class KnowledgeRetrievalPipeline:
 
         self.semantic_min_score = float(
             semantic_min_score
+        )
+
+        # The deterministic reranker's own score is an RRF rank-fusion
+        # value (see HybridRetriever): a top-ranked candidate always
+        # lands in roughly the same narrow band (~0.03 with rrf_k=60)
+        # whether or not it is actually relevant, because it reflects
+        # rank agreement between BM25 and vector search, not semantic
+        # confidence. That means _can_use_fast_path()'s rank-consensus
+        # check alone cannot tell a genuinely strong match from a
+        # "least bad of a bad set" match (e.g. when an upstream query
+        # has drifted to something generic). The raw vector similarity
+        # score on the winning candidate is used as a second, real
+        # confidence signal before allowing a fast-path verbatim
+        # answer to skip semantic reranking entirely.
+        # 0.45 is deliberately above what off-topic questions reach
+        # (measured top-1 vector similarity: 0.20-0.41 for weather,
+        # jokes, capitals, investment advice, ...) and below what real
+        # in-scope questions usually reach (0.49-0.69). It applies to
+        # the no-LLM paths only (fast path, and the fallback used when
+        # the semantic reranker fails or is not configured): without an
+        # LLM relevance judgement, a borderline match should abstain
+        # rather than risk answering an unrelated question.
+        self.fast_path_min_vector_score = float(
+            fast_path_min_vector_score
         )
 
     async def retrieve(
@@ -324,6 +358,7 @@ class KnowledgeRetrievalPipeline:
             final_candidates,
             reranker_mode,
             fallback_reason,
+            distinct_options,
         ) = await self._rerank(
             query=query,
             candidates=(
@@ -387,6 +422,9 @@ class KnowledgeRetrievalPipeline:
             ),
             reranker_fallback_reason=(
                 fallback_reason
+            ),
+            distinct_options=(
+                distinct_options
             ),
         )
 
@@ -469,12 +507,14 @@ class KnowledgeRetrievalPipeline:
         list[RerankedCandidate],
         str,
         str | None,
+        list[str],
     ]:
         if not candidates:
             return (
                 [],
                 "none",
                 None,
+                [],
             )
 
         if self._can_use_fast_path(
@@ -496,10 +536,25 @@ class KnowledgeRetrievalPipeline:
                 )
             )
 
+            # _can_use_fast_path() approved candidates[0] on BM25/vector
+            # consensus, but the deterministic reranker then re-sorts
+            # with title-overlap bonuses (up to +0.02) that dwarf the
+            # RRF gaps between neighbours (~0.002). Left alone, that
+            # bonus could hand the top slot - and the verbatim answer -
+            # to a different page than the one just approved (an English
+            # "How do I create a demo account?" returned the "Demo
+            # Account and Trading Conditions" page over the account
+            # creation page). Keep the approved candidate first.
+            results = self._pin_fast_path_winner(
+                results=results,
+                winner=candidates[0],
+            )
+
             return (
                 results,
                 "deterministic_fast_path",
                 None,
+                [],
             )
 
         if (
@@ -507,15 +562,18 @@ class KnowledgeRetrievalPipeline:
             is None
         ):
             return (
-                self.reranker.rerank(
-                    query=query,
-                    candidates=candidates,
-                    limit=(
-                        self.final_top_k
-                    ),
+                self._filter_by_vector_confidence(
+                    self.reranker.rerank(
+                        query=query,
+                        candidates=candidates,
+                        limit=(
+                            self.final_top_k
+                        ),
+                    )
                 ),
                 "deterministic",
                 None,
+                [],
             )
 
         semantic_candidates = (
@@ -531,7 +589,10 @@ class KnowledgeRetrievalPipeline:
         )
 
         try:
-            results = (
+            (
+                results,
+                distinct_options,
+            ) = (
                 await self
                 .semantic_reranker
                 .rerank(
@@ -558,10 +619,19 @@ class KnowledgeRetrievalPipeline:
                 )
             ]
 
+            # A disambiguation only makes sense while there are still
+            # at least two live options to choose between - if the
+            # relevance floor above already dropped one of them, acting
+            # on a stale distinct_options list would offer a choice
+            # that no longer exists.
+            if len(results) < 2:
+                distinct_options = []
+
             return (
                 results,
                 "semantic",
                 None,
+                distinct_options,
             )
 
         except Exception as exc:
@@ -590,11 +660,64 @@ class KnowledgeRetrievalPipeline:
                 )
             )
 
+            results = (
+                self._filter_by_vector_confidence(
+                    results
+                )
+            )
+
             return (
                 results,
                 "deterministic_fallback",
                 fallback_reason,
+                [],
             )
+
+    @staticmethod
+    def _pin_fast_path_winner(
+        *,
+        results: list[RerankedCandidate],
+        winner: HybridCandidate,
+    ) -> list[RerankedCandidate]:
+        winner_id = winner.candidate.candidate_id
+
+        for index, item in enumerate(
+            results
+        ):
+            if (
+                item.candidate.candidate.candidate_id
+                == winner_id
+            ):
+                return [
+                    item,
+                    *results[:index],
+                    *results[index + 1:],
+                ]
+
+        return results
+
+    def _filter_by_vector_confidence(
+        self,
+        results: list[
+            RerankedCandidate
+        ],
+    ) -> list[RerankedCandidate]:
+        # Same reasoning as fast_path_min_vector_score: the
+        # deterministic reranker's score is not a real relevance
+        # measure, so when it is used (here, because the semantic
+        # reranker itself failed) still require a minimum raw vector
+        # similarity before trusting a candidate.
+        return [
+            item
+            for item in results
+            if (
+                item.candidate.vector_score
+                is not None
+                and item.candidate.vector_score
+                >= self.fast_path_min_vector_score
+            )
+        ]
+
     def _can_use_fast_path(
         self,
         *,
@@ -632,11 +755,35 @@ class KnowledgeRetrievalPipeline:
         ):
             return False
 
-        # Strong retrieval consensus:
-        # candidate must be near the top in both systems.
+        # Strong retrieval consensus. BM25 rank is allowed some slack
+        # (a longer or more repetitive candidate can out-rank a shorter,
+        # more precise one on keyword density alone - see the real case
+        # this guards against: a 3-platform MT5 password-change page
+        # narrowly beat the portal-level password page on raw BM25 rank
+        # for a generic "change my trading password" question that never
+        # mentioned MT5, purely because its content repeats the phrase
+        # more times). Vector rank is held to a stricter bar - it must
+        # be the actual top semantic match, not merely "close" - because
+        # today's investigation consistently found vector similarity to
+        # be the more trustworthy relevance signal of the two. When BM25
+        # and vector search disagree about which candidate is genuinely
+        # best, that disagreement itself is a sign this needs the
+        # semantic reranker's judgment, not the crude deterministic
+        # fallback score.
         if (
             top_hybrid.bm25_rank > 2
-            or top_hybrid.vector_rank > 2
+            or top_hybrid.vector_rank != 1
+        ):
+            return False
+
+        # Rank agreement alone is not a relevance guarantee - see the
+        # comment on self.fast_path_min_vector_score. Require the raw
+        # vector similarity to also clear a minimum bar before trusting
+        # a verbatim, no-LLM-judgment answer.
+        if (
+            top_hybrid.vector_score is None
+            or top_hybrid.vector_score
+            < self.fast_path_min_vector_score
         ):
             return False
 

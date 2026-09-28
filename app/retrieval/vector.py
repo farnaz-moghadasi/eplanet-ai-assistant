@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import asyncio
 import uuid
 from dataclasses import dataclass
 from typing import Any
 
 from qdrant_client import AsyncQdrantClient
+from qdrant_client.http.exceptions import (
+    ResponseHandlingException,
+)
 from qdrant_client.models import (
     Distance,
     FieldCondition,
@@ -15,6 +19,7 @@ from qdrant_client.models import (
     VectorParams,
 )
 
+from app.core.observability import log_event
 from app.knowledge.schemas import KnowledgeMetadata
 from app.retrieval.document import KnowledgeChunk
 from app.retrieval.embeddings import EmbeddingProvider
@@ -256,6 +261,81 @@ class QdrantVectorRetriever:
 
         return indexed
 
+    # Qdrant living in a container that can be restarted/rescheduled
+    # independently of this app means a connection attempt can land in
+    # the small window while it is coming back up. Two attempts with a
+    # short pause covers that window; anything that fails twice is a
+    # real outage, not a blip, and is handled by the caller.
+    _QUERY_MAX_ATTEMPTS = 2
+    _QUERY_RETRY_DELAY_SECONDS = 0.3
+
+    async def _query_points_with_retry(
+        self,
+        *,
+        query: list[float],
+        query_filter: Any,
+        limit: int,
+    ):
+        last_error: Exception | None = None
+
+        for attempt in range(
+            1, self._QUERY_MAX_ATTEMPTS + 1
+        ):
+            try:
+                return (
+                    await self.client
+                    .query_points(
+                        collection_name=(
+                            self.collection_name
+                        ),
+                        query=query,
+                        query_filter=(
+                            query_filter
+                        ),
+                        limit=limit,
+                        with_payload=True,
+                    )
+                )
+
+            except ResponseHandlingException as exc:
+                last_error = exc
+
+                log_event(
+                    "retrieval.vector_search_attempt_failed",
+                    level=30,
+                    attempt=attempt,
+                    max_attempts=(
+                        self._QUERY_MAX_ATTEMPTS
+                    ),
+                    error_type=(
+                        exc.__class__.__name__
+                    ),
+                )
+
+                if (
+                    attempt
+                    < self._QUERY_MAX_ATTEMPTS
+                ):
+                    await asyncio.sleep(
+                        self
+                        ._QUERY_RETRY_DELAY_SECONDS
+                    )
+
+        log_event(
+            "retrieval.vector_search_unavailable",
+            level=40,
+            attempts=(
+                self._QUERY_MAX_ATTEMPTS
+            ),
+            error_type=(
+                last_error.__class__.__name__
+                if last_error
+                else None
+            ),
+        )
+
+        return None
+
     async def retrieve(
         self,
         *,
@@ -308,25 +388,36 @@ class QdrantVectorRetriever:
         )
 
         result = (
-            await self.client
-            .query_points(
-                collection_name=(
-                    self.collection_name
-                ),
+            await self
+            ._query_points_with_retry(
                 query=vector,
                 query_filter=(
                     query_filter
                 ),
                 limit=limit,
-                with_payload=True,
             )
         )
+
+        if result is None:
+            # Qdrant stayed unreachable after retrying (e.g. the
+            # container restarting, a network blip). Semantic search is
+            # only one of two retrieval signals - degrade to BM25-only
+            # for this request rather than failing the whole chat
+            # request with a raw 500. Everything downstream already
+            # treats a missing vector_score as "no confidence" (the
+            # fast-path and no-LLM-reranker floors both require it), so
+            # this fails safe: at worst it falls through to the
+            # semantic reranker or the existing honest "couldn't find"
+            # answer, never a fabricated one.
+            return []
 
         candidates: list[
             KnowledgeCandidate
         ] = []
 
-        for point in result.points:
+        for point in (
+            result.points
+        ):
             payload = (
                 point.payload
                 or {}

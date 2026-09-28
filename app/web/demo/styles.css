@@ -342,6 +342,19 @@ table.results-table tr:last-child td { border-bottom: 0; }
 }
 .bubble a { color: var(--accent-dark); font-weight: 650; text-decoration: none; }
 .bubble a:hover { text-decoration: underline; }
+.bubble strong { font-weight: 700; }
+.msg-paragraph + .msg-paragraph,
+.msg-heading + .msg-paragraph,
+.msg-paragraph + .msg-heading {
+  margin-top: 10px;
+}
+.msg-heading {
+  font-weight: 700;
+}
+.msg-heading-1 { font-size: 15.5px; }
+.msg-heading-2 { font-size: 14.5px; }
+.msg-heading-3 { font-size: 14px; color: var(--muted); }
+.msg-row.user .msg-heading-3 { color: rgba(255, 255, 255, 0.85); }
 .citations { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 7px; }
 .citation-pill {
   font-size: 10.5px;

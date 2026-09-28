@@ -17,6 +17,14 @@ class Settings(BaseSettings):
     ENTITY_ALIASES_PATH: str = ("app/core/entity_aliases.json")
     OPENAI_API_KEY: str = ""
     OPENAI_MODEL: str = "gpt-5.6-terra"
+    # Used for classification-style steps (conversation understanding,
+    # semantic reranking) where a lighter/faster model is an acceptable
+    # trade-off. Answer generation and grounding validation keep using
+    # OPENAI_MODEL, since those are the highest-stakes steps (the actual
+    # customer-facing text, and the last check against a wrong/unsupported
+    # answer) - defaults to OPENAI_MODEL when unset so behavior is
+    # unchanged until a faster model is explicitly configured.
+    OPENAI_FAST_MODEL: str = ""
     OPENAI_TIMEOUT_SECONDS: float = 60.0
 
     ANTHROPIC_API_KEY: str = ""
@@ -45,6 +53,13 @@ class Settings(BaseSettings):
                                     "confluence_snapshot.json")
 
     CHAT_RATE_LIMIT_PER_MINUTE: int = 20
+
+    @property
+    def OPENAI_FAST_MODEL_RESOLVED(self) -> str:
+        return (
+            self.OPENAI_FAST_MODEL
+            or self.OPENAI_MODEL
+        )
 
 settings = Settings()
 

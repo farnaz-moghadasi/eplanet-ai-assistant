@@ -390,3 +390,114 @@ def test_correction_preserves_previous_query_context(
         "منظورم"
         in result.resolved_query
     )
+
+
+def test_disambiguation_choice_matched_by_keyword(
+    tmp_path,
+):
+    resolver = build_resolver(tmp_path)
+
+    state = ConversationState(
+        language="FA",
+        last_resolved_query=(
+            "how do i change my account password"
+        ),
+        awaiting_context_field="disambiguation",
+        pending_disambiguation_options=[
+            "client portal password",
+            "MetaTrader 5 trading password",
+        ],
+        pending_disambiguation_query=(
+            "how do i change my account password"
+        ),
+    )
+
+    result = resolver.resolve(
+        message="MetaTrader 5",
+        state=state,
+        language="EN",
+    )
+
+    assert state.awaiting_context_field is None
+    assert state.pending_disambiguation_options == []
+    assert (
+        "MetaTrader 5 trading password"
+        in result.resolved_query
+    )
+    assert (
+        result.entities[
+            "disambiguation_choice"
+        ]
+        == "MetaTrader 5 trading password"
+    )
+
+
+def test_disambiguation_choice_matched_by_ordinal(
+    tmp_path,
+):
+    resolver = build_resolver(tmp_path)
+
+    state = ConversationState(
+        language="FA",
+        last_resolved_query=(
+            "رمز حسابم رو چجوری عوض کنم؟"
+        ),
+        awaiting_context_field="disambiguation",
+        pending_disambiguation_options=[
+            "رمز عبور پنل کاربری",
+            "رمز معاملاتی MetaTrader 5",
+        ],
+        pending_disambiguation_query=(
+            "رمز حسابم رو چجوری عوض کنم؟"
+        ),
+    )
+
+    result = resolver.resolve(
+        message="دومی",
+        state=state,
+        language="FA",
+    )
+
+    assert (
+        "رمز معاملاتی MetaTrader 5"
+        in result.resolved_query
+    )
+
+
+def test_disambiguation_no_match_keeps_pending_state(
+    tmp_path,
+):
+    # An unrelated reply must not be forced into one of the offered
+    # options - the pending state stays so the caller can decide what
+    # to do (e.g. fall through to a fresh understanding pass).
+    resolver = build_resolver(tmp_path)
+
+    state = ConversationState(
+        language="EN",
+        last_resolved_query=(
+            "how do i change my account password"
+        ),
+        awaiting_context_field="disambiguation",
+        pending_disambiguation_options=[
+            "client portal password",
+            "MetaTrader 5 trading password",
+        ],
+        pending_disambiguation_query=(
+            "how do i change my account password"
+        ),
+    )
+
+    resolver.resolve(
+        message="what is the weather today",
+        state=state,
+        language="EN",
+    )
+
+    assert (
+        state.awaiting_context_field
+        == "disambiguation"
+    )
+    assert (
+        state.pending_disambiguation_options
+        != []
+    )

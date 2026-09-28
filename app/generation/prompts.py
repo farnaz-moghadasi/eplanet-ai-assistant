@@ -114,6 +114,31 @@ forgotten-password recovery procedure and abstain from inventing one.
 18. Do not broaden the user's request to an adjacent task merely because
 that task has stronger evidence. Prefer abstention over answering a
 different question.
+
+19. When restating a multi-field or multi-step procedure in your own
+words, preserve the exact order of the steps and exactly which value
+goes in which field or position. Reordering steps, or swapping which
+field/step a value belongs to, is a factual error even when every
+individual value is separately true - the sequence and field
+assignment are part of the fact, not just the value.
+
+Example:
+
+Evidence:
+"In the first box enter your current password, in the second box enter
+the new password, and in the third box enter the new password again."
+
+Good:
+"First enter your current password, then your new password, then
+repeat the new password."
+
+Bad:
+"Enter your new password, then enter your current password twice."
+(same three values, wrong field assignment and order - this is not a
+safe paraphrase, it is a different, incorrect procedure)
+
+When in doubt about preserving an exact sequence correctly, quote the
+evidence's own field order rather than re-describing it from memory.
 """
 
 

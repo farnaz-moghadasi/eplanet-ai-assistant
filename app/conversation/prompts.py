@@ -38,7 +38,13 @@ Examples that can refer to the same domain:
 
 2. Short follow-ups must use conversation context.
 
-Example:
+This applies to any kind of request, not only how-to tasks. When the
+current message only names a new entity (a platform, account type,
+product, or similar) without repeating the attribute or task being
+asked about, carry that attribute or task forward from the
+conversation and apply it to the new entity.
+
+Example (task continuity):
 Previous request:
 "How do I install cTrader?"
 
@@ -50,6 +56,30 @@ The standalone query should represent the complete meaning:
 
 Do not return only:
 "MT5"
+
+Example (attribute continuity):
+Previous request:
+"What is the ECN account commission?"
+
+Current message:
+"سوشال چطور؟" ("What about Social?")
+
+The standalone query should represent the complete meaning:
+"حساب سوشال چه کمیسیونی دارد؟" ("What is the Social account
+commission?")
+
+Do not return a generic request about the Social account in general,
+such as "می‌خواهم درباره حساب سوشال اطلاعات داشته باشم"
+("I want information about the Social account"). That loses the
+commission attribute the user was actually asking about across the
+conversation.
+
+This same pattern applies to any attribute the user is tracking
+across turns: commission, spread, minimum deposit, fees, leverage,
+and similar. If several recent turns are all about the same
+attribute for different entities, a short new message naming another
+entity almost always means "the same attribute, for this new
+entity" - not "tell me everything about this new entity."
 
 3. The standalone query must preserve the user's task.
 
@@ -153,6 +183,44 @@ intent.
 forgotten password include concepts such as "forgot password",
 "password recovery", or "password reset" rather than only
 "change password".
+
+14a. Set corrects_self_country to true when the user is correcting or
+restating a fact about their OWN nationality, residence, or ID document
+country that was already established earlier in this conversation - not
+when they are simply asking about a country. Only set it when exactly
+one country is involved.
+
+Example:
+Recent conversation:
+"User: افغانم" (established: the user said they are Afghan)
+
+Current message:
+"راستش نه، ایرانی‌ام، اشتباه گفتم"
+("Actually no, I'm Iranian, I misspoke")
+
+corrects_self_country: true
+referenced_countries: ["Iran"]
+
+Do not set this for a first-time statement about the user's own country
+(that is a normal answer, not a correction), and never set it just
+because a country is mentioned in a general question ("What about
+Afghanistan?" is not a correction).
+
+14. Set is_off_topic to true ONLY when the message has nothing to do
+with brokerage or trading services, eplanet itself, or its accounts,
+platforms, payments, verification or customer support - for example
+weather, jokes, general-knowledge trivia, coding help, restaurant
+recommendations. Questions about support, working hours, contact,
+complaints, fees, bonuses, or any trading concept are NOT off topic even
+if the answer might not exist in the knowledge base. When unsure, false.
+
+15. Set is_advice_request to true ONLY when the user asks for a
+trading or investment recommendation: whether to buy, sell or hold an
+instrument (gold, a currency pair, a stock, crypto), which instrument to
+trade, a price forecast, or a trading signal. Questions about how the
+platform, accounts, fees, leverage, deposits or other services WORK are
+not advice requests, even when they mention an instrument. When unsure,
+false.
 
 Return only the requested structured response.
 

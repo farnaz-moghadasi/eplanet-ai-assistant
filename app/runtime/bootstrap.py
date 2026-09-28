@@ -42,7 +42,7 @@ from app.runtime.entity_registry import (
     EntityRegistry,
 )
 
-from scripts.test_conversation_real_kb import (
+from app.runtime.pipeline_builder import (
     build_pipeline,
 )
 
@@ -168,9 +168,22 @@ async def build_runtime() -> (
         )
     )
 
+    fast_structured_llm = (
+        OpenAIStructuredLLM(
+            api_key=(
+                settings
+                .OPENAI_API_KEY
+            ),
+            model=(
+                settings
+                .OPENAI_FAST_MODEL_RESOLVED
+            ),
+        )
+    )
+
     understanding_service = (
         ConversationUnderstandingService(
-            llm=structured_llm,
+            llm=fast_structured_llm,
             entity_registry=(
                 entity_registry
             ),
@@ -180,7 +193,15 @@ async def build_runtime() -> (
     generation_service = (
         AnswerGenerationService(
             llm=structured_llm,
-            max_candidates=5,
+            # Trimmed from 5: merging more candidates into one answer
+            # means more independent claims, and grounding rejects the
+            # whole answer if even one claim comes back unsupported.
+            # 2 still allows a specific + a general source to be
+            # combined when useful, without letting a long tail of
+            # weaker candidates blow up the claim count. The
+            # relevance-gap filter in AnswerGenerationService further
+            # trims this for semantically-reranked candidates.
+            max_candidates=2,
             max_content_chars=4000,
         )
     )

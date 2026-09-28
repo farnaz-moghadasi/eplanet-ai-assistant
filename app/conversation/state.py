@@ -93,6 +93,22 @@ class ConversationState(BaseModel):
         str | None
     ) = None
 
+    # Set together with awaiting_context_field == "disambiguation" when
+    # the top retrieval candidates answer genuinely different
+    # sub-questions (e.g. "change my account password" could mean the
+    # client portal or a specific trading platform). Not entity-typed
+    # like the fields above since the options are generated per-query,
+    # not drawn from a fixed alias table.
+    pending_disambiguation_options: (
+        list[str]
+    ) = Field(
+        default_factory=list
+    )
+
+    pending_disambiguation_query: (
+        str | None
+    ) = None
+
     turn_count: int = 0
 
     recent_turns: list[
@@ -288,6 +304,8 @@ class ConversationState(BaseModel):
         self,
     ) -> None:
         self.awaiting_context_field = None
+        self.pending_disambiguation_options = []
+        self.pending_disambiguation_query = None
 
 
 def state_to_prompt_text(

@@ -25,6 +25,48 @@ from app.runtime.entity_registry import (
 )
 
 
+# Kept module-level (not just a class attribute) so
+# ConversationService can use the same list as a deterministic backstop
+# when the model itself fails to set client_specific=True for a request
+# that plainly asks about the user's own account/balance/KYC/etc.
+# "How do I ...?" phrasing on a message that also names "my account" (or
+# similar) means a procedure question ("how do I verify my account?"),
+# not a request for the account's live data - unlike the ambiguous
+# CLIENT_SPECIFIC_MARKERS check below, this one is reliable in
+# practice, so it is used to keep procedural questions out of the
+# client-data gate even when a personal-account keyword also matches.
+HOW_TO_MARKERS = (
+    "\u0686\u06af\u0648\u0646\u0647",
+    "\u0686\u0637\u0648\u0631",
+    "\u0686\u062c\u0648\u0631\u06cc",
+    "how do i",
+    "how can i",
+    "how to",
+    "how do you",
+)
+
+
+CLIENT_SPECIFIC_MARKERS = (
+    "my account",
+    "my balance",
+    "my kyc",
+    "my deposit",
+    "my withdrawal",
+    "my profile",
+    "my manager",
+    "\u062d\u0633\u0627\u0628 \u0645\u0646",
+    "\u062d\u0633\u0627\u0628\u0645",
+    "\u0645\u0648\u062c\u0648\u062f\u06cc \u0645\u0646",
+    "\u0645\u0648\u062c\u0648\u062f\u06cc\u0645",
+    "\u0627\u062d\u0631\u0627\u0632 \u0647\u0648\u06cc\u062a \u0645\u0646",
+    "kyc \u0645\u0646",
+    "\u0648\u0627\u0631\u06cc\u0632 \u0645\u0646",
+    "\u0648\u0627\u0631\u06cc\u0632\u0645",
+    "\u0628\u0631\u062f\u0627\u0634\u062a \u0645\u0646",
+    "\u0628\u0631\u062f\u0627\u0634\u062a\u0645",
+)
+
+
 class ConversationUnderstandingService:
     _FA_HOW_TO_MARKERS = (
         "چگونه",
@@ -59,25 +101,7 @@ class ConversationUnderstandingService:
         "اندیکاتور",
     )
 
-    _CLIENT_SPECIFIC_MARKERS = (
-        "my account",
-        "my balance",
-        "my kyc",
-        "my deposit",
-        "my withdrawal",
-        "my profile",
-        "my manager",
-        "حساب من",
-        "حسابم",
-        "موجودی من",
-        "موجودیم",
-        "احراز هویت من",
-        "kyc من",
-        "واریز من",
-        "واریزم",
-        "برداشت من",
-        "برداشتم",
-    )
+    _CLIENT_SPECIFIC_MARKERS = CLIENT_SPECIFIC_MARKERS
 
     _SENSITIVE_MARKERS = (
         "kyc",

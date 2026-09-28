@@ -1,6 +1,6 @@
 import asyncio
 
-from scripts.test_pipeline_real_kb import (
+from app.runtime.pipeline_builder import (
     build_pipeline,
 )
 

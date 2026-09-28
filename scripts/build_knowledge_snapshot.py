@@ -82,6 +82,10 @@ async def main() -> None:
         dict[str, str]
     ] = []
 
+    excluded_by_status: list[
+        dict[str, str]
+    ] = []
+
     print(
         f"Fetching {len(page_ids)} "
         "Confluence pages..."
@@ -95,6 +99,44 @@ async def main() -> None:
             page = await client.get_page(
                 page_id
             )
+
+            # Confluence still serves archived (and other
+            # non-current-status) pages by direct ID - without this
+            # check, archiving a page in Confluence would have no
+            # effect on the bot at all, since nothing else in the
+            # pipeline looks at status.
+            page_status = page.get(
+                "status"
+            )
+
+            if (
+                page_status is not None
+                and page_status != "current"
+            ):
+                excluded_by_status.append(
+                    {
+                        "page_id": (
+                            str(page_id)
+                        ),
+                        "status": str(
+                            page_status
+                        ),
+                        "title": str(
+                            page.get(
+                                "title",
+                                "",
+                            )
+                        ),
+                    }
+                )
+
+                print(
+                    f"[{index}/{len(page_ids)}] "
+                    f"EXCLUDED {page_id} "
+                    f"(status={page_status})"
+                )
+
+                continue
 
             pages[
                 str(page_id)
@@ -142,6 +184,9 @@ async def main() -> None:
             failures
         ),
         "failures": failures,
+        "excluded_by_status": (
+            excluded_by_status
+        ),
         "pages": pages,
     }
 
@@ -178,6 +223,10 @@ async def main() -> None:
     print(
         f"Failed pages: "
         f"{len(failures)}"
+    )
+    print(
+        "Excluded (non-current "
+        f"status): {len(excluded_by_status)}"
     )
 
     if failures:

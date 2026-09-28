@@ -1365,9 +1365,17 @@ class KnowledgeParser:
             )
         )
 
-        return SourceAuthority(
-            normalized
-        )
+        # Optional[SourceAuthority] in the schema - an unrecognized
+        # draft/placeholder value (e.g. "UNVERIFIED_CURATED_CONTENT",
+        # not a real enum member) should degrade to unset rather than
+        # crash the whole page's ingestion.
+        try:
+            return SourceAuthority(
+                normalized
+            )
+
+        except ValueError:
+            return None
 
     @staticmethod
     def _parse_fallback_policy(
@@ -1408,9 +1416,19 @@ class KnowledgeParser:
         ):
             return None
 
-        return date.fromisoformat(
-            normalized
-        )
+        # This field is Optional[date] in the schema - any free-text
+        # placeholder a content author leaves here ("not yet reviewed",
+        # "pending", "TBD", ...) should degrade to unset rather than
+        # crash the whole page's ingestion. Maintaining an allowlist of
+        # every phrase someone might type is a losing game; catching
+        # the parse failure is the general fix.
+        try:
+            return date.fromisoformat(
+                normalized
+            )
+
+        except ValueError:
+            return None
 
     @staticmethod
     def _parse_review_frequency(

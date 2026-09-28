@@ -10,6 +10,8 @@ COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app/ ./app/
+# scripts/ is copied for scripts/confluence_page_ids.txt (read at boot)
+# and the sync scripts; the app itself no longer imports from it.
 COPY scripts/ ./scripts/
 COPY data/ ./data/
 COPY gunicorn.conf.py ./

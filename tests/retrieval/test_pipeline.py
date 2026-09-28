@@ -85,10 +85,46 @@ def make_candidate(
     )
 
 
+class FakeSemanticReranker:
+    def __init__(self, *, ranked, distinct_options):
+        self.ranked = ranked
+        self.distinct_options = distinct_options
+
+    async def rerank(
+        self,
+        *,
+        query,
+        candidates,
+        language=None,
+        context=None,
+        limit=5,
+    ):
+        from app.retrieval.reranker import RerankedCandidate
+
+        by_key = {
+            item.candidate.metadata.knowledge_key: item
+            for item in candidates
+        }
+
+        results = [
+            RerankedCandidate(
+                candidate=by_key[key],
+                rerank_score=score,
+                reasons=[],
+            )
+            for key, score in self.ranked
+            if key in by_key
+        ]
+
+        return results[:limit], self.distinct_options
+
+
 def make_pipeline(
     *,
     bm25_candidates: list[KnowledgeCandidate],
     vector_candidates: list[KnowledgeCandidate],
+    semantic_reranker=None,
+    fast_path_enabled: bool = True,
 ) -> KnowledgeRetrievalPipeline:
     return KnowledgeRetrievalPipeline(
         bm25_retriever=FakeRetriever(
@@ -102,10 +138,12 @@ def make_pipeline(
         ),
         eligibility_policy=KnowledgeEligibilityPolicy(),
         reranker=KnowledgeReranker(),
+        semantic_reranker=semantic_reranker,
         bm25_top_k=20,
         vector_top_k=20,
         hybrid_top_k=20,
         final_top_k=5,
+        fast_path_enabled=fast_path_enabled,
     )
 
 @pytest.mark.asyncio
@@ -467,3 +505,190 @@ async def test_empty_query_returns_empty_result():
     assert result.eligible_candidates == []
     assert result.final_candidates == []
     assert result.eligibility_trace == []
+
+@pytest.mark.asyncio
+async def test_fast_path_used_when_vector_score_strong():
+    candidate = make_candidate(
+        knowledge_key="KB-GLOBAL-STRONG-EN",
+        title="Strong Match",
+        score=0.9,
+    )
+
+    pipeline = make_pipeline(
+        bm25_candidates=[candidate],
+        vector_candidates=[candidate],
+    )
+
+    result = await pipeline.retrieve(
+        query="strong match",
+        context=EligibilityContext(),
+        language="EN",
+    )
+
+    assert (
+        result.reranker_mode
+        == "deterministic_fast_path"
+    )
+
+    assert len(
+        result.final_candidates
+    ) == 1
+
+@pytest.mark.asyncio
+async def test_fast_path_rejects_weak_vector_score():
+    # Rank agreement alone (top-1 in both BM25 and vector search) is
+    # not a relevance guarantee: an RRF-fused rank score lands in the
+    # same narrow band whether the top candidate is genuinely relevant
+    # or just the least-bad match for a poorly resolved query. A weak
+    # raw vector score should stop the fast path from firing so the
+    # answer does not get returned verbatim with no confidence check.
+    candidate = make_candidate(
+        knowledge_key="KB-GLOBAL-WEAK-EN",
+        title="Weak Match",
+        score=0.1,
+    )
+
+    pipeline = make_pipeline(
+        bm25_candidates=[candidate],
+        vector_candidates=[candidate],
+    )
+
+    result = await pipeline.retrieve(
+        query="weak match",
+        context=EligibilityContext(),
+        language="EN",
+    )
+
+    assert (
+        result.reranker_mode
+        != "deterministic_fast_path"
+    )
+
+    assert result.final_candidates == []
+
+
+@pytest.mark.asyncio
+async def test_fast_path_keeps_the_approved_candidate_first():
+    # The fast path approves the candidate BM25 and vector search both
+    # rank first. The deterministic reranker's title-overlap bonus must
+    # not be able to swap a different page into the top slot.
+    creation = make_candidate(
+        knowledge_key="KB-ACC-001-EN",
+        title="Open a Trading Account",
+        score=0.9,
+    )
+
+    conditions = make_candidate(
+        knowledge_key="KB-ACC-003-EN",
+        title="Demo Account and Trading Conditions",
+        score=0.8,
+    )
+
+    pipeline = make_pipeline(
+        bm25_candidates=[creation, conditions],
+        vector_candidates=[creation, conditions],
+    )
+
+    result = await pipeline.retrieve(
+        query="demo account",
+        context=EligibilityContext(),
+        language="EN",
+    )
+
+    assert (
+        result.reranker_mode
+        == "deterministic_fast_path"
+    )
+
+    top = result.final_candidates[0]
+
+    assert (
+        top.candidate.candidate.metadata.knowledge_key
+        == "KB-ACC-001-EN"
+    )
+
+
+@pytest.mark.asyncio
+async def test_distinct_options_propagate_through_retrieve():
+    portal = make_candidate(
+        knowledge_key="KB-ACCESS-001-FA",
+        title="Recover client portal password",
+        score=0.9,
+    )
+
+    mt5 = make_candidate(
+        knowledge_key="KB-MT5-006-FA",
+        title="Change trading password in MetaTrader 5",
+        score=0.85,
+    )
+
+    options = [
+        "client portal password",
+        "MetaTrader 5 trading password",
+    ]
+
+    pipeline = make_pipeline(
+        bm25_candidates=[portal, mt5],
+        vector_candidates=[portal, mt5],
+        semantic_reranker=FakeSemanticReranker(
+            ranked=[
+                ("KB-ACCESS-001-FA", 0.9),
+                ("KB-MT5-006-FA", 0.85),
+            ],
+            distinct_options=options,
+        ),
+        fast_path_enabled=False,
+    )
+
+    result = await pipeline.retrieve(
+        query="how do I change my account password",
+        context=EligibilityContext(),
+        language="EN",
+    )
+
+    assert result.reranker_mode == "semantic"
+    assert result.distinct_options == options
+
+
+@pytest.mark.asyncio
+async def test_distinct_options_dropped_if_floor_removes_an_option():
+    # A disambiguation is only meaningful while 2+ options are still
+    # live candidates - if the relevance floor drops one, offering a
+    # choice between "X" and a filtered-out ghost would be confusing.
+    strong = make_candidate(
+        knowledge_key="KB-ACCESS-001-FA",
+        title="Recover client portal password",
+        score=0.9,
+    )
+
+    weak = make_candidate(
+        knowledge_key="KB-MT5-006-FA",
+        title="Change trading password in MetaTrader 5",
+        score=0.85,
+    )
+
+    pipeline = make_pipeline(
+        bm25_candidates=[strong, weak],
+        vector_candidates=[strong, weak],
+        semantic_reranker=FakeSemanticReranker(
+            ranked=[
+                ("KB-ACCESS-001-FA", 0.9),
+                # Below semantic_min_score (0.5 default): filtered out.
+                ("KB-MT5-006-FA", 0.2),
+            ],
+            distinct_options=[
+                "client portal password",
+                "MetaTrader 5 trading password",
+            ],
+        ),
+        fast_path_enabled=False,
+    )
+
+    result = await pipeline.retrieve(
+        query="how do I change my account password",
+        context=EligibilityContext(),
+        language="EN",
+    )
+
+    assert result.distinct_options == []
+    assert len(result.final_candidates) == 1

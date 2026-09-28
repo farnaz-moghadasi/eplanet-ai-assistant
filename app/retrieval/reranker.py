@@ -34,6 +34,19 @@ class SemanticRerankResponse(BaseModel):
         default_factory=list
     )
 
+    # Populated ONLY when two or more top candidates answer genuinely
+    # different sub-questions the user's own wording left unresolved
+    # (e.g. "how do I change my account password?" could mean the
+    # client-portal login password or a specific trading platform's
+    # password - these are different procedures, not degrees of the
+    # same answer). Each entry is a short label, in the query's
+    # language, naming one distinct option. Left empty for the
+    # ordinary case: candidates differing only in relevance, not
+    # in which distinct question they answer.
+    distinct_options: list[str] = Field(
+        default_factory=list
+    )
+
 
 SEMANTIC_RERANK_SYSTEM_PROMPT = """
 You are the semantic relevance reranker for a governed
@@ -76,6 +89,32 @@ Examples of distinct actions:
 - troubleshooting
 - deposit
 - withdrawal
+
+2b. Do not assume a specific platform was meant when none was named.
+
+When the user's request does not mention a specific trading platform
+(such as MT5 or cTrader), prefer a candidate that describes the
+general/platform-agnostic way to do this (for example, through the
+client portal) over a candidate that only covers steps for one
+specific platform - even if the platform-specific candidate is longer
+or more detailed.
+
+Example:
+
+Query:
+"How do I change my trading account password?"
+(no platform named)
+
+Better:
+"Recover/change trading account password" (client portal, works
+regardless of platform)
+
+Worse:
+"Change trading password in MetaTrader 5"
+
+The MT5-specific candidate answers a narrower question (assumes MT5)
+than what was actually asked. Only prefer it when the user's own
+message names that platform.
 
 3. Use title, content, category, knowledge type, and the supplied
 resolved retrieval context.
@@ -127,6 +166,41 @@ Not useful for this request.
 
 9. Use exactly the supplied candidate_id values.
 Never invent or modify candidate IDs.
+
+10. Set distinct_options when, and only when, two or more of the
+highest-scoring candidates answer genuinely DIFFERENT sub-questions
+that the user's own wording left unresolved - not merely candidates
+that are both somewhat relevant.
+
+Example (set distinct_options):
+
+Query:
+"How do I change my account password?"
+(no platform or system named)
+
+Candidate A: "Recover client portal password"
+Candidate B: "Change trading password in MetaTrader 5"
+
+These are two different procedures for two different systems, and
+nothing in the query says which one the user means.
+
+distinct_options: ["client portal password", "MetaTrader 5 trading
+password"]
+
+Example (do NOT set distinct_options):
+
+Query:
+"How do I install cTrader?"
+
+Candidate A: "Download and Login to cTrader" (0.95)
+Candidate B: "Add Indicators in cTrader" (0.40)
+
+Candidate B is just less relevant, not a different valid answer to the
+same question. distinct_options stays empty.
+
+Also leave it empty when the query already names which option it
+means (a specific platform, "from the client portal", etc.) - in that
+case just rank normally.
 
 Return only the requested structured response.
 """
@@ -315,11 +389,12 @@ class SemanticKnowledgeReranker:
             str,
         ] | None = None,
         limit: int = 5,
-    ) -> list[
-        RerankedCandidate
+    ) -> tuple[
+        list[RerankedCandidate],
+        list[str],
     ]:
         if not candidates:
-            return []
+            return [], []
 
         prompt = self._build_prompt(
             query=query,
@@ -339,6 +414,35 @@ class SemanticKnowledgeReranker:
                     SemanticRerankResponse
                 ),
             )
+        )
+
+        alias_to_id = {
+            f"C{index}": (
+                item.candidate.candidate_id
+            )
+            for index, item in enumerate(
+                candidates,
+                start=1,
+            )
+        }
+
+        response = response.model_copy(
+            update={
+                "items": [
+                    item.model_copy(
+                        update={
+                            "candidate_id":
+                                alias_to_id.get(
+                                    item.candidate_id
+                                    .strip(),
+                                    item.candidate_id,
+                                )
+                        }
+                    )
+                    for item
+                    in response.items
+                ]
+            }
         )
 
         self._validate_response(
@@ -418,7 +522,15 @@ class SemanticKnowledgeReranker:
             )
         )
 
-        return results[:limit]
+        distinct_options = [
+            option.strip()
+            for option in (
+                response.distinct_options
+            )
+            if option and option.strip()
+        ]
+
+        return results[:limit], distinct_options
 
     def _validate_response(
         self,
@@ -540,8 +652,15 @@ class SemanticKnowledgeReranker:
                         f"{index}"
                     ),
                     (
+                        # Short alias, mapped back to the real ID in
+                        # rerank(). The real IDs are long hash-bearing
+                        # strings (and sibling pages can share most of
+                        # one); the model was observed returning an ID
+                        # with the wrong page prefix, which failed the
+                        # whole rerank and dropped the request onto the
+                        # much weaker deterministic fallback.
                         "candidate_id: "
-                        f"{candidate.candidate_id}"
+                        f"C{index}"
                     ),
                     (
                         "knowledge_key: "

@@ -1,9 +1,9 @@
 {
   "summary": {
-    "total_pages": 228,
-    "parsed_pages": 227,
-    "ai_ready_pages": 224,
-    "failed_pages": 1
+    "total_pages": 250,
+    "parsed_pages": 250,
+    "ai_ready_pages": 250,
+    "failed_pages": 0
   },
   "pages": [
     {
@@ -652,96 +652,6 @@
       "required_context_fields": [],
       "bot_mode": "KNOWLEDGE",
       "validation_reasons": [],
-      "error": null
-    },
-    {
-      "page_id": "314114049",
-      "title": "[KU] جۆرەکانی هەژماری مامەڵەکردن",
-      "parsed": true,
-      "ai_ready": false,
-      "knowledge_key": "KB-KYC-DOCS-IR-EN",
-      "canonical_knowledge_key": "KB-KYC-DOCS-IR",
-      "language": "EN",
-      "status": "NEEDS_REVIEW",
-      "audience": "BOTH",
-      "market_scope": "COUNTRY",
-      "countries": [
-        "IR"
-      ],
-      "regions": [],
-      "required_context_fields": [
-        "nationality"
-      ],
-      "bot_mode": "KNOWLEDGE",
-      "validation_reasons": [
-        "STATUS_NOT_APPROVED"
-      ],
-      "error": null
-    },
-    {
-      "page_id": "313360431",
-      "title": "[AR] أنواع حسابات التداول",
-      "parsed": true,
-      "ai_ready": false,
-      "knowledge_key": "KB-KYC-DOCS-IR-EN",
-      "canonical_knowledge_key": "KB-KYC-DOCS-IR",
-      "language": "EN",
-      "status": "NEEDS_REVIEW",
-      "audience": "BOTH",
-      "market_scope": "COUNTRY",
-      "countries": [
-        "IR"
-      ],
-      "regions": [],
-      "required_context_fields": [
-        "nationality"
-      ],
-      "bot_mode": "KNOWLEDGE",
-      "validation_reasons": [
-        "STATUS_NOT_APPROVED"
-      ],
-      "error": null
-    },
-    {
-      "page_id": "314048514",
-      "title": "[EN] Trading Account Types",
-      "parsed": false,
-      "ai_ready": false,
-      "knowledge_key": null,
-      "canonical_knowledge_key": null,
-      "language": null,
-      "status": null,
-      "audience": null,
-      "market_scope": null,
-      "countries": [],
-      "regions": [],
-      "required_context_fields": [],
-      "bot_mode": null,
-      "validation_reasons": [],
-      "error": "ValueError: 'UNVERIFIED_CURATED_CONTENT' is not a valid SourceAuthority"
-    },
-    {
-      "page_id": "292192277",
-      "title": "[FA] معرفی انواع حساب‌های معاملاتی",
-      "parsed": true,
-      "ai_ready": false,
-      "knowledge_key": "KB-KYC-DOCS-IR-EN",
-      "canonical_knowledge_key": "KB-KYC-DOCS-IR",
-      "language": "EN",
-      "status": "NEEDS_REVIEW",
-      "audience": "BOTH",
-      "market_scope": "COUNTRY",
-      "countries": [
-        "IR"
-      ],
-      "regions": [],
-      "required_context_fields": [
-        "nationality"
-      ],
-      "bot_mode": "KNOWLEDGE",
-      "validation_reasons": [
-        "STATUS_NOT_APPROVED"
-      ],
       "error": null
     },
     {
@@ -1753,42 +1663,6 @@
       "error": null
     },
     {
-      "page_id": "308576257",
-      "title": "[FA] انتخاب پلتفرم معاملاتی",
-      "parsed": true,
-      "ai_ready": true,
-      "knowledge_key": "KB-PLATFORM-001-FA",
-      "canonical_knowledge_key": "KB-PLATFORM-001",
-      "language": "FA",
-      "status": "APPROVED",
-      "audience": "BOTH",
-      "market_scope": "GLOBAL",
-      "countries": [],
-      "regions": [],
-      "required_context_fields": [],
-      "bot_mode": "KNOWLEDGE",
-      "validation_reasons": [],
-      "error": null
-    },
-    {
-      "page_id": "314146824",
-      "title": "[EN] Choose a trading platform",
-      "parsed": true,
-      "ai_ready": true,
-      "knowledge_key": "KB-PLATFORM-001-EN",
-      "canonical_knowledge_key": "KB-PLATFORM-001",
-      "language": "EN",
-      "status": "APPROVED",
-      "audience": "BOTH",
-      "market_scope": "GLOBAL",
-      "countries": [],
-      "regions": [],
-      "required_context_fields": [],
-      "bot_mode": "KNOWLEDGE",
-      "validation_reasons": [],
-      "error": null
-    },
-    {
       "page_id": "316375056",
       "title": "[AR] اختيار منصة التداول",
       "parsed": true,
@@ -1796,24 +1670,6 @@
       "knowledge_key": "KB-PLATFORM-001-AR",
       "canonical_knowledge_key": "KB-PLATFORM-001",
       "language": "AR",
-      "status": "APPROVED",
-      "audience": "BOTH",
-      "market_scope": "GLOBAL",
-      "countries": [],
-      "regions": [],
-      "required_context_fields": [],
-      "bot_mode": "KNOWLEDGE",
-      "validation_reasons": [],
-      "error": null
-    },
-    {
-      "page_id": "316440584",
-      "title": "[KU] هەڵبژاردنی پلاتفۆرمی مامەڵەکردن",
-      "parsed": true,
-      "ai_ready": true,
-      "knowledge_key": "KB-PLATFORM-001-KU",
-      "canonical_knowledge_key": "KB-PLATFORM-001",
-      "language": "KU",
       "status": "APPROVED",
       "audience": "BOTH",
       "market_scope": "GLOBAL",
@@ -2171,9 +2027,9 @@
       "title": "[KU] گۆڕینی وشەی نهێنی هەژماری مامەڵەکردن لە MetaTrader 5",
       "parsed": true,
       "ai_ready": true,
-      "knowledge_key": "KB-MT5-006-FA",
+      "knowledge_key": "KB-MT5-006-KU",
       "canonical_knowledge_key": "KB-MT5-006",
-      "language": "FA",
+      "language": "KU",
       "status": "APPROVED",
       "audience": "BOTH",
       "market_scope": "GLOBAL",
@@ -2461,6 +2317,60 @@
       "ai_ready": true,
       "knowledge_key": "KB-MT5-010-KU",
       "canonical_knowledge_key": "KB-MT5-010",
+      "language": "KU",
+      "status": "APPROVED",
+      "audience": "BOTH",
+      "market_scope": "GLOBAL",
+      "countries": [],
+      "regions": [],
+      "required_context_fields": [],
+      "bot_mode": "KNOWLEDGE",
+      "validation_reasons": [],
+      "error": null
+    },
+    {
+      "page_id": "308576257",
+      "title": "[FA] انتخاب پلتفرم معاملاتی",
+      "parsed": true,
+      "ai_ready": true,
+      "knowledge_key": "KB-PLATFORM-001-FA",
+      "canonical_knowledge_key": "KB-PLATFORM-001",
+      "language": "FA",
+      "status": "APPROVED",
+      "audience": "BOTH",
+      "market_scope": "GLOBAL",
+      "countries": [],
+      "regions": [],
+      "required_context_fields": [],
+      "bot_mode": "KNOWLEDGE",
+      "validation_reasons": [],
+      "error": null
+    },
+    {
+      "page_id": "314146824",
+      "title": "[EN] Choose a trading platform",
+      "parsed": true,
+      "ai_ready": true,
+      "knowledge_key": "KB-PLATFORM-001-EN",
+      "canonical_knowledge_key": "KB-PLATFORM-001",
+      "language": "EN",
+      "status": "APPROVED",
+      "audience": "BOTH",
+      "market_scope": "GLOBAL",
+      "countries": [],
+      "regions": [],
+      "required_context_fields": [],
+      "bot_mode": "KNOWLEDGE",
+      "validation_reasons": [],
+      "error": null
+    },
+    {
+      "page_id": "316440584",
+      "title": "[KU] هەڵبژاردنی پلاتفۆرمی مامەڵەکردن",
+      "parsed": true,
+      "ai_ready": true,
+      "knowledge_key": "KB-PLATFORM-001-KU",
+      "canonical_knowledge_key": "KB-PLATFORM-001",
       "language": "KU",
       "status": "APPROVED",
       "audience": "BOTH",
@@ -3921,12 +3831,14 @@
       "canonical_knowledge_key": "KB-KYC-003",
       "language": "FA",
       "status": "APPROVED",
-      "audience": "BOTH",
+      "audience": "CLIENT",
       "market_scope": "GLOBAL",
       "countries": [],
       "regions": [],
-      "required_context_fields": [],
-      "bot_mode": "KNOWLEDGE",
+      "required_context_fields": [
+        "client_id"
+      ],
+      "bot_mode": "LOOKUP",
       "validation_reasons": [],
       "error": null
     },
@@ -4130,6 +4042,578 @@
       "countries": [],
       "regions": [],
       "required_context_fields": [],
+      "bot_mode": "KNOWLEDGE",
+      "validation_reasons": [],
+      "error": null
+    },
+    {
+      "page_id": "305135617",
+      "title": "[EN] KYC Documents for Iran",
+      "parsed": true,
+      "ai_ready": true,
+      "knowledge_key": "KB-KYC-DOCS-IR-EN",
+      "canonical_knowledge_key": "KB-KYC-DOCS-IR",
+      "language": "EN",
+      "status": "APPROVED",
+      "audience": "BOTH",
+      "market_scope": "COUNTRY",
+      "countries": [
+        "IR"
+      ],
+      "regions": [],
+      "required_context_fields": [
+        "kyc_document_country"
+      ],
+      "bot_mode": "KNOWLEDGE",
+      "validation_reasons": [],
+      "error": null
+    },
+    {
+      "page_id": "304906242",
+      "title": "[FA] مدارک احراز هویت برای ایران",
+      "parsed": true,
+      "ai_ready": true,
+      "knowledge_key": "KB-KYC-DOCS-IR-FA",
+      "canonical_knowledge_key": "KB-KYC-DOCS-IR",
+      "language": "FA",
+      "status": "APPROVED",
+      "audience": "BOTH",
+      "market_scope": "COUNTRY",
+      "countries": [
+        "IR"
+      ],
+      "regions": [],
+      "required_context_fields": [
+        "kyc_document_country"
+      ],
+      "bot_mode": "KNOWLEDGE",
+      "validation_reasons": [],
+      "error": null
+    },
+    {
+      "page_id": "303890436",
+      "title": "[FA] مدارک احراز هویت برای افغانستان",
+      "parsed": true,
+      "ai_ready": true,
+      "knowledge_key": "KB-KYC-DOCS-AF-FA",
+      "canonical_knowledge_key": "KB-KYC-DOCS-AF",
+      "language": "FA",
+      "status": "APPROVED",
+      "audience": "BOTH",
+      "market_scope": "COUNTRY",
+      "countries": [
+        "AF"
+      ],
+      "regions": [],
+      "required_context_fields": [
+        "kyc_document_country"
+      ],
+      "bot_mode": "KNOWLEDGE",
+      "validation_reasons": [],
+      "error": null
+    },
+    {
+      "page_id": "303857668",
+      "title": "[EN] KYC Documents for Afghanistan",
+      "parsed": true,
+      "ai_ready": true,
+      "knowledge_key": "KB-KYC-DOCS-AF-EN",
+      "canonical_knowledge_key": "KB-KYC-DOCS-AF",
+      "language": "EN",
+      "status": "APPROVED",
+      "audience": "BOTH",
+      "market_scope": "COUNTRY",
+      "countries": [
+        "AF"
+      ],
+      "regions": [],
+      "required_context_fields": [
+        "kyc_document_country"
+      ],
+      "bot_mode": "KNOWLEDGE",
+      "validation_reasons": [],
+      "error": null
+    },
+    {
+      "page_id": "315457558",
+      "title": "[EN] Follow Up on a Pending or Delayed Withdrawal",
+      "parsed": true,
+      "ai_ready": true,
+      "knowledge_key": "KB-WDR-IR-001-EN",
+      "canonical_knowledge_key": "KB-WDR-IR-001",
+      "language": "EN",
+      "status": "APPROVED",
+      "audience": "BOTH",
+      "market_scope": "COUNTRY",
+      "countries": [
+        "IR"
+      ],
+      "regions": [],
+      "required_context_fields": [
+        "country_of_residence"
+      ],
+      "bot_mode": "KNOWLEDGE",
+      "validation_reasons": [],
+      "error": null
+    },
+    {
+      "page_id": "315424811",
+      "title": "[EN] Withdrawal Without Trading",
+      "parsed": true,
+      "ai_ready": true,
+      "knowledge_key": "KB-WDR-IR-005-EN",
+      "canonical_knowledge_key": "KB-WDR-IR-005",
+      "language": "EN",
+      "status": "APPROVED",
+      "audience": "BOTH",
+      "market_scope": "COUNTRY",
+      "countries": [
+        "IR"
+      ],
+      "regions": [],
+      "required_context_fields": [
+        "country_of_residence"
+      ],
+      "bot_mode": "KNOWLEDGE",
+      "validation_reasons": [],
+      "error": null
+    },
+    {
+      "page_id": "291864597",
+      "title": "[FA] برداشت بدون انجام معامله",
+      "parsed": true,
+      "ai_ready": true,
+      "knowledge_key": "KB-WDR-IR-005-FA",
+      "canonical_knowledge_key": "KB-WDR-IR-005",
+      "language": "FA",
+      "status": "APPROVED",
+      "audience": "BOTH",
+      "market_scope": "COUNTRY",
+      "countries": [
+        "IR"
+      ],
+      "regions": [],
+      "required_context_fields": [
+        "country_of_residence"
+      ],
+      "bot_mode": "KNOWLEDGE",
+      "validation_reasons": [],
+      "error": null
+    },
+    {
+      "page_id": "292388885",
+      "title": "[FA] حداقل، حداکثر و تعداد دفعات برداشت",
+      "parsed": true,
+      "ai_ready": true,
+      "knowledge_key": "KB-WDR-IR-004-FA",
+      "canonical_knowledge_key": "KB-WDR-IR-004",
+      "language": "FA",
+      "status": "APPROVED",
+      "audience": "BOTH",
+      "market_scope": "COUNTRY",
+      "countries": [
+        "IR"
+      ],
+      "regions": [],
+      "required_context_fields": [
+        "country_of_residence"
+      ],
+      "bot_mode": "KNOWLEDGE",
+      "validation_reasons": [],
+      "error": null
+    },
+    {
+      "page_id": "316702721",
+      "title": "[EN] Withdrawal Minimums, Maximums, and Frequency",
+      "parsed": true,
+      "ai_ready": true,
+      "knowledge_key": "KB-WDR-IR-004-EN",
+      "canonical_knowledge_key": "KB-WDR-IR-004",
+      "language": "EN",
+      "status": "APPROVED",
+      "audience": "BOTH",
+      "market_scope": "COUNTRY",
+      "countries": [
+        "IR"
+      ],
+      "regions": [],
+      "required_context_fields": [
+        "country_of_residence"
+      ],
+      "bot_mode": "KNOWLEDGE",
+      "validation_reasons": [],
+      "error": null
+    },
+    {
+      "page_id": "316473361",
+      "title": "[EN] Withdrawal Fees",
+      "parsed": true,
+      "ai_ready": true,
+      "knowledge_key": "KB-WDR-IR-003-EN",
+      "canonical_knowledge_key": "KB-WDR-IR-003",
+      "language": "EN",
+      "status": "APPROVED",
+      "audience": "BOTH",
+      "market_scope": "COUNTRY",
+      "countries": [
+        "IR"
+      ],
+      "regions": [],
+      "required_context_fields": [
+        "country_of_residence"
+      ],
+      "bot_mode": "KNOWLEDGE",
+      "validation_reasons": [],
+      "error": null
+    },
+    {
+      "page_id": "292225045",
+      "title": "[FA] کارمزد برداشت",
+      "parsed": true,
+      "ai_ready": true,
+      "knowledge_key": "KB-WDR-IR-003-FA",
+      "canonical_knowledge_key": "KB-WDR-IR-003",
+      "language": "FA",
+      "status": "APPROVED",
+      "audience": "BOTH",
+      "market_scope": "COUNTRY",
+      "countries": [
+        "IR"
+      ],
+      "regions": [],
+      "required_context_fields": [
+        "country_of_residence"
+      ],
+      "bot_mode": "KNOWLEDGE",
+      "validation_reasons": [],
+      "error": null
+    },
+    {
+      "page_id": "292356117",
+      "title": "[FA] ثبت برداشت بانکی",
+      "parsed": true,
+      "ai_ready": true,
+      "knowledge_key": "KB-WDR-IR-002-FA",
+      "canonical_knowledge_key": "KB-WDR-IR-002",
+      "language": "FA",
+      "status": "APPROVED",
+      "audience": "BOTH",
+      "market_scope": "COUNTRY",
+      "countries": [
+        "IR"
+      ],
+      "regions": [],
+      "required_context_fields": [
+        "country_of_residence"
+      ],
+      "bot_mode": "KNOWLEDGE",
+      "validation_reasons": [],
+      "error": null
+    },
+    {
+      "page_id": "315621420",
+      "title": "[EN] Submit a Bank Withdrawal",
+      "parsed": true,
+      "ai_ready": true,
+      "knowledge_key": "KB-WDR-IR-002-EN",
+      "canonical_knowledge_key": "KB-WDR-IR-002",
+      "language": "EN",
+      "status": "APPROVED",
+      "audience": "BOTH",
+      "market_scope": "COUNTRY",
+      "countries": [
+        "IR"
+      ],
+      "regions": [],
+      "required_context_fields": [
+        "country_of_residence"
+      ],
+      "bot_mode": "KNOWLEDGE",
+      "validation_reasons": [],
+      "error": null
+    },
+    {
+      "page_id": "291733548",
+      "title": "[FA] پیگیری برداشت در انتظار یا با تأخیر",
+      "parsed": true,
+      "ai_ready": true,
+      "knowledge_key": "KB-WDR-IR-001-FA",
+      "canonical_knowledge_key": "KB-WDR-IR-001",
+      "language": "FA",
+      "status": "APPROVED",
+      "audience": "BOTH",
+      "market_scope": "COUNTRY",
+      "countries": [
+        "IR"
+      ],
+      "regions": [],
+      "required_context_fields": [
+        "country_of_residence"
+      ],
+      "bot_mode": "KNOWLEDGE",
+      "validation_reasons": [],
+      "error": null
+    },
+    {
+      "page_id": "315195408",
+      "title": "[EN] Crypto Deposit",
+      "parsed": true,
+      "ai_ready": true,
+      "knowledge_key": "KB-DEP-IR-001-EN",
+      "canonical_knowledge_key": "KB-DEP-IR-001",
+      "language": "EN",
+      "status": "APPROVED",
+      "audience": "BOTH",
+      "market_scope": "COUNTRY",
+      "countries": [
+        "IR"
+      ],
+      "regions": [],
+      "required_context_fields": [
+        "country_of_residence"
+      ],
+      "bot_mode": "KNOWLEDGE",
+      "validation_reasons": [],
+      "error": null
+    },
+    {
+      "page_id": "291930173",
+      "title": "[FA] واریز ارز دیجیتال",
+      "parsed": true,
+      "ai_ready": true,
+      "knowledge_key": "KB-DEP-IR-001-FA",
+      "canonical_knowledge_key": "KB-DEP-IR-001",
+      "language": "FA",
+      "status": "APPROVED",
+      "audience": "BOTH",
+      "market_scope": "COUNTRY",
+      "countries": [
+        "IR"
+      ],
+      "regions": [],
+      "required_context_fields": [
+        "country_of_residence"
+      ],
+      "bot_mode": "KNOWLEDGE",
+      "validation_reasons": [],
+      "error": null
+    },
+    {
+      "page_id": "292061205",
+      "title": "[FA] واریز از طریق انتقال بانکی",
+      "parsed": true,
+      "ai_ready": true,
+      "knowledge_key": "KB-DEP-IR-003-FA",
+      "canonical_knowledge_key": "KB-DEP-IR-003",
+      "language": "FA",
+      "status": "APPROVED",
+      "audience": "BOTH",
+      "market_scope": "COUNTRY",
+      "countries": [
+        "IR"
+      ],
+      "regions": [],
+      "required_context_fields": [
+        "country_of_residence"
+      ],
+      "bot_mode": "KNOWLEDGE",
+      "validation_reasons": [],
+      "error": null
+    },
+    {
+      "page_id": "314572820",
+      "title": "[EN] Deposit via Bank Transfer",
+      "parsed": true,
+      "ai_ready": true,
+      "knowledge_key": "KB-DEP-IR-002-EN",
+      "canonical_knowledge_key": "KB-DEP-IR-002",
+      "language": "EN",
+      "status": "APPROVED",
+      "audience": "BOTH",
+      "market_scope": "COUNTRY",
+      "countries": [
+        "IR"
+      ],
+      "regions": [],
+      "required_context_fields": [
+        "country_of_residence"
+      ],
+      "bot_mode": "KNOWLEDGE",
+      "validation_reasons": [],
+      "error": null
+    },
+    {
+      "page_id": "292290561",
+      "title": "[FA] واریز انجام شده اما موجودی اضافه نشده است",
+      "parsed": true,
+      "ai_ready": true,
+      "knowledge_key": "KB-DEP-IR-003-FA",
+      "canonical_knowledge_key": "KB-DEP-IR-003",
+      "language": "FA",
+      "status": "APPROVED",
+      "audience": "BOTH",
+      "market_scope": "COUNTRY",
+      "countries": [
+        "IR"
+      ],
+      "regions": [],
+      "required_context_fields": [
+        "country_of_residence"
+      ],
+      "bot_mode": "KNOWLEDGE",
+      "validation_reasons": [],
+      "error": null
+    },
+    {
+      "page_id": "316145680",
+      "title": "[EN] Deposit Completed but Balance Not Credited",
+      "parsed": true,
+      "ai_ready": true,
+      "knowledge_key": "KB-DEP-IR-003-EN",
+      "canonical_knowledge_key": "KB-DEP-IR-003",
+      "language": "EN",
+      "status": "APPROVED",
+      "audience": "BOTH",
+      "market_scope": "COUNTRY",
+      "countries": [
+        "IR"
+      ],
+      "regions": [],
+      "required_context_fields": [
+        "country_of_residence"
+      ],
+      "bot_mode": "KNOWLEDGE",
+      "validation_reasons": [],
+      "error": null
+    },
+    {
+      "page_id": "314441748",
+      "title": "[EN] Deposit via TopChange",
+      "parsed": true,
+      "ai_ready": true,
+      "knowledge_key": "KB-DEP-IR-004-EN",
+      "canonical_knowledge_key": "KB-DEP-IR-004",
+      "language": "EN",
+      "status": "APPROVED",
+      "audience": "BOTH",
+      "market_scope": "COUNTRY",
+      "countries": [
+        "IR"
+      ],
+      "regions": [],
+      "required_context_fields": [
+        "country_of_residence"
+      ],
+      "bot_mode": "KNOWLEDGE",
+      "validation_reasons": [],
+      "error": null
+    },
+    {
+      "page_id": "292323329",
+      "title": "[FA] واریز از طریق تاپ‌چنج",
+      "parsed": true,
+      "ai_ready": true,
+      "knowledge_key": "KB-DEP-IR-004-FA",
+      "canonical_knowledge_key": "KB-DEP-IR-004",
+      "language": "FA",
+      "status": "APPROVED",
+      "audience": "BOTH",
+      "market_scope": "COUNTRY",
+      "countries": [
+        "IR"
+      ],
+      "regions": [],
+      "required_context_fields": [
+        "country_of_residence"
+      ],
+      "bot_mode": "KNOWLEDGE",
+      "validation_reasons": [],
+      "error": null
+    },
+    {
+      "page_id": "291962901",
+      "title": "[FA] واریز از طریق درگاه و کارت بانکی",
+      "parsed": true,
+      "ai_ready": true,
+      "knowledge_key": "KB-DEP-IR-005-FA",
+      "canonical_knowledge_key": "KB-DEP-IR-005",
+      "language": "FA",
+      "status": "APPROVED",
+      "audience": "BOTH",
+      "market_scope": "COUNTRY",
+      "countries": [
+        "IR"
+      ],
+      "regions": [],
+      "required_context_fields": [
+        "country_of_residence"
+      ],
+      "bot_mode": "KNOWLEDGE",
+      "validation_reasons": [],
+      "error": null
+    },
+    {
+      "page_id": "315719701",
+      "title": "[EN] Deposit via Bank Card or Payment Gateway",
+      "parsed": true,
+      "ai_ready": true,
+      "knowledge_key": "KB-DEP-IR-005-EN",
+      "canonical_knowledge_key": "KB-DEP-IR-005",
+      "language": "EN",
+      "status": "APPROVED",
+      "audience": "BOTH",
+      "market_scope": "COUNTRY",
+      "countries": [
+        "IR"
+      ],
+      "regions": [],
+      "required_context_fields": [
+        "country_of_residence"
+      ],
+      "bot_mode": "KNOWLEDGE",
+      "validation_reasons": [],
+      "error": null
+    },
+    {
+      "page_id": "315523129",
+      "title": "[EN] Find the Transaction Hash or TXID",
+      "parsed": true,
+      "ai_ready": true,
+      "knowledge_key": "KB-DEP-IR-006-EN",
+      "canonical_knowledge_key": "KB-DEP-IR-006",
+      "language": "EN",
+      "status": "APPROVED",
+      "audience": "BOTH",
+      "market_scope": "COUNTRY",
+      "countries": [
+        "IR"
+      ],
+      "regions": [],
+      "required_context_fields": [
+        "country_of_residence"
+      ],
+      "bot_mode": "KNOWLEDGE",
+      "validation_reasons": [],
+      "error": null
+    },
+    {
+      "page_id": "292356097",
+      "title": "[FA] پیدا کردن هش تراکنش یا TXID",
+      "parsed": true,
+      "ai_ready": true,
+      "knowledge_key": "KB-DEP-IR-006-FA",
+      "canonical_knowledge_key": "KB-DEP-IR-006",
+      "language": "FA",
+      "status": "APPROVED",
+      "audience": "BOTH",
+      "market_scope": "COUNTRY",
+      "countries": [
+        "IR"
+      ],
+      "regions": [],
+      "required_context_fields": [
+        "country_of_residence"
+      ],
       "bot_mode": "KNOWLEDGE",
       "validation_reasons": [],
       "error": null
