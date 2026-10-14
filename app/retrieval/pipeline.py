@@ -3,40 +3,24 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from dataclasses import (
-    dataclass,
-    field,
-)
+from dataclasses import dataclass, field
 
-from app.core.performance import (
-    record_timing,
-    record_value,
-)
-from app.retrieval.base import (
-    KnowledgeRetriever,
-)
+from app.core.performance import record_timing, record_value
+from app.retrieval.base import KnowledgeRetriever
 from app.retrieval.eligibility import (
     EligibilityContext,
     EligibilityResult,
     KnowledgeEligibilityPolicy,
 )
-from app.retrieval.hybrid import (
-    HybridCandidate,
-    HybridRetriever,
-)
+from app.retrieval.hybrid import HybridCandidate, HybridRetriever
 from app.retrieval.reranker import (
     KnowledgeReranker,
     RerankedCandidate,
     SemanticKnowledgeReranker,
 )
-from app.retrieval.schemas import (
-    KnowledgeCandidate,
-)
+from app.retrieval.schemas import KnowledgeCandidate
 
-
-logger = logging.getLogger(
-    __name__
-)
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -44,57 +28,31 @@ class EligibilityTrace:
     knowledge_key: str
     eligible: bool
 
-    reasons: list[str] = field(
-        default_factory=list
-    )
+    reasons: list[str] = field(default_factory=list)
 
 
 @dataclass
 class RetrievalPipelineResult:
     query: str
 
-    bm25_candidates: list[
-        KnowledgeCandidate
-    ]
+    bm25_candidates: list[KnowledgeCandidate]
 
-    vector_candidates: list[
-        KnowledgeCandidate
-    ]
+    vector_candidates: list[KnowledgeCandidate]
 
-    hybrid_candidates: list[
-        HybridCandidate
-    ]
+    hybrid_candidates: list[HybridCandidate]
 
-    eligible_candidates: list[
-        HybridCandidate
-    ]
+    eligible_candidates: list[HybridCandidate]
 
-    final_candidates: list[
-        RerankedCandidate
-    ]
+    final_candidates: list[RerankedCandidate]
 
-    eligibility_trace: list[
-        EligibilityTrace
-    ] = field(
-        default_factory=list
-    )
+    eligibility_trace: list[EligibilityTrace] = field(default_factory=list)
 
-    reranker_mode: str = (
-        "deterministic"
-    )
+    reranker_mode: str = "deterministic"
 
-    reranker_fallback_reason: (
-        str | None
-    ) = None
+    reranker_fallback_reason: str | None = None
 
-    # Set by the semantic reranker only when two or more top candidates
-    # answer genuinely different sub-questions the query left
-    # unresolved (see SEMANTIC_RERANK_SYSTEM_PROMPT rule 10). Consumed
-    # by ConversationService to ask which one was meant instead of
-    # silently picking one.
-    distinct_options: list[str] = field(
-        default_factory=list
-    )
+
+    distinct_options: list[str] = field(default_factory=list)
 
 
 class KnowledgeRetrievalPipeline:
@@ -110,114 +68,54 @@ class KnowledgeRetrievalPipeline:
         "PROMOTIONS",
     }
 
-    _FAST_PATH_BLOCKED_TYPES = {
-        "POLICY_RULE",
-    }
+    _FAST_PATH_BLOCKED_TYPES = {"POLICY_RULE"}
 
     def __init__(
         self,
         *,
-        bm25_retriever: (
-            KnowledgeRetriever
-        ),
-        vector_retriever: (
-            KnowledgeRetriever
-        ),
-        hybrid_retriever: (
-            HybridRetriever
-        ),
-        eligibility_policy: (
-            KnowledgeEligibilityPolicy
-        ),
+        bm25_retriever: KnowledgeRetriever,
+        vector_retriever: KnowledgeRetriever,
+        hybrid_retriever: HybridRetriever,
+        eligibility_policy: KnowledgeEligibilityPolicy,
         reranker: KnowledgeReranker,
-        semantic_reranker: (
-            SemanticKnowledgeReranker
-            | None
-        ) = None,
+        semantic_reranker: SemanticKnowledgeReranker | None = None,
         bm25_top_k: int = 20,
         vector_top_k: int = 20,
         hybrid_top_k: int = 20,
-        semantic_rerank_top_k: (
-            int | None
-        ) = 12,
+        semantic_rerank_top_k: int | None = 12,
         final_top_k: int = 5,
         fast_path_enabled: bool = True,
         semantic_min_score: float = 0.50,
         fast_path_min_vector_score: float = 0.45,
     ):
-        self.bm25_retriever = (
-            bm25_retriever
-        )
+        self.bm25_retriever = bm25_retriever
 
-        self.vector_retriever = (
-            vector_retriever
-        )
+        self.vector_retriever = vector_retriever
 
-        self.hybrid_retriever = (
-            hybrid_retriever
-        )
+        self.hybrid_retriever = hybrid_retriever
 
-        self.eligibility_policy = (
-            eligibility_policy
-        )
+        self.eligibility_policy = eligibility_policy
 
         self.reranker = reranker
 
-        self.semantic_reranker = (
-            semantic_reranker
-        )
+        self.semantic_reranker = semantic_reranker
 
-        self.bm25_top_k = (
-            bm25_top_k
-        )
+        self.bm25_top_k = bm25_top_k
 
-        self.vector_top_k = (
-            vector_top_k
-        )
+        self.vector_top_k = vector_top_k
 
-        self.hybrid_top_k = (
-            hybrid_top_k
-        )
+        self.hybrid_top_k = hybrid_top_k
 
-        self.semantic_rerank_top_k = (
-            semantic_rerank_top_k
-        )
+        self.semantic_rerank_top_k = semantic_rerank_top_k
 
-        self.final_top_k = (
-            final_top_k
-        )
+        self.final_top_k = final_top_k
 
-        self.fast_path_enabled = (
-            fast_path_enabled
-        )
+        self.fast_path_enabled = fast_path_enabled
 
-        self.semantic_min_score = float(
-            semantic_min_score
-        )
+        self.semantic_min_score = float(semantic_min_score)
 
-        # The deterministic reranker's own score is an RRF rank-fusion
-        # value (see HybridRetriever): a top-ranked candidate always
-        # lands in roughly the same narrow band (~0.03 with rrf_k=60)
-        # whether or not it is actually relevant, because it reflects
-        # rank agreement between BM25 and vector search, not semantic
-        # confidence. That means _can_use_fast_path()'s rank-consensus
-        # check alone cannot tell a genuinely strong match from a
-        # "least bad of a bad set" match (e.g. when an upstream query
-        # has drifted to something generic). The raw vector similarity
-        # score on the winning candidate is used as a second, real
-        # confidence signal before allowing a fast-path verbatim
-        # answer to skip semantic reranking entirely.
-        # 0.45 is deliberately above what off-topic questions reach
-        # (measured top-1 vector similarity: 0.20-0.41 for weather,
-        # jokes, capitals, investment advice, ...) and below what real
-        # in-scope questions usually reach (0.49-0.69). It applies to
-        # the no-LLM paths only (fast path, and the fallback used when
-        # the semantic reranker fails or is not configured): without an
-        # LLM relevance judgement, a borderline match should abstain
-        # rather than risk answering an unrelated question.
-        self.fast_path_min_vector_score = float(
-            fast_path_min_vector_score
-        )
+
+        self.fast_path_min_vector_score = float(fast_path_min_vector_score)
 
     async def retrieve(
         self,
@@ -225,22 +123,15 @@ class KnowledgeRetrievalPipeline:
         query: str,
         context: EligibilityContext,
         language: str | None = None,
-        knowledge_hints: (
-            list[str]
-            | None
-        ) = None,
+        knowledge_hints: list[str] | None = None,
+        rerank_query: str | None = None,
     ) -> RetrievalPipelineResult:
-        retrieval_started = (
-            time.perf_counter()
-        )
+        retrieval_started = time.perf_counter()
 
         query = query.strip()
 
         if not query:
-            record_timing(
-                "retrieval_ms",
-                0,
-            )
+            record_timing("retrieval_ms", 0)
 
             return RetrievalPipelineResult(
                 query=query,
@@ -253,322 +144,136 @@ class KnowledgeRetrievalPipeline:
                 reranker_mode="none",
             )
 
-        hints = (
-            knowledge_hints
-            or []
+        hints = knowledge_hints or []
+
+        bm25_candidates, vector_candidates = await asyncio.gather(
+            self._timed_bm25(query=query, knowledge_hints=hints, language=language),
+            self._timed_vector(query=query, knowledge_hints=hints, language=language),
         )
 
-        (
-            bm25_candidates,
-            vector_candidates,
-        ) = await asyncio.gather(
-            self._timed_bm25(
-                query=query,
-                knowledge_hints=hints,
-                language=language,
-            ),
-            self._timed_vector(
-                query=query,
-                knowledge_hints=hints,
-                language=language,
-            ),
+        hybrid_started = time.perf_counter()
+
+        hybrid_candidates = self.hybrid_retriever.merge(
+            bm25_candidates=(bm25_candidates),
+            vector_candidates=(vector_candidates),
+            limit=(self.hybrid_top_k),
         )
 
-        hybrid_started = (
-            time.perf_counter()
-        )
+        record_timing("hybrid_ms", (time.perf_counter() - hybrid_started) * 1000)
 
-        hybrid_candidates = (
-            self.hybrid_retriever
-            .merge(
-                bm25_candidates=(
-                    bm25_candidates
-                ),
-                vector_candidates=(
-                    vector_candidates
-                ),
-                limit=(
-                    self.hybrid_top_k
-                ),
-            )
+        eligibility_started = time.perf_counter()
+
+        eligible_candidates, eligibility_trace = self._apply_eligibility(
+            candidates=(hybrid_candidates), context=context
         )
 
         record_timing(
-            "hybrid_ms",
-            (
-                time.perf_counter()
-                - hybrid_started
-            )
-            * 1000,
-        )
-
-        eligibility_started = (
-            time.perf_counter()
-        )
-
-        (
-            eligible_candidates,
-            eligibility_trace,
-        ) = self._apply_eligibility(
-            candidates=(
-                hybrid_candidates
-            ),
-            context=context,
-        )
-
-        record_timing(
-            "eligibility_ms",
-            (
-                time.perf_counter()
-                - eligibility_started
-            )
-            * 1000,
+            "eligibility_ms", (time.perf_counter() - eligibility_started) * 1000
         )
 
         if eligible_candidates:
-            top_hybrid = (
-                eligible_candidates[0]
-            )
+            top_hybrid = eligible_candidates[0]
+
+            record_value("top_bm25_rank", top_hybrid.bm25_rank)
+
+            record_value("top_vector_rank", top_hybrid.vector_rank)
 
             record_value(
-                "top_bm25_rank",
-                top_hybrid.bm25_rank,
+                "top_hybrid_key", (top_hybrid.candidate.metadata.knowledge_key)
             )
 
-            record_value(
-                "top_vector_rank",
-                top_hybrid.vector_rank,
+        reranker_started = time.perf_counter()
+
+        final_candidates, reranker_mode, fallback_reason, distinct_options = (
+            await self._rerank(
+                query=query,
+                rerank_query=(rerank_query.strip() if rerank_query else None),
+                candidates=(eligible_candidates),
+                bm25_candidates=(bm25_candidates),
+                vector_candidates=(vector_candidates),
+                context=context,
+                language=language,
             )
-
-            record_value(
-                "top_hybrid_key",
-                (
-                    top_hybrid
-                    .candidate
-                    .metadata
-                    .knowledge_key
-                ),
-            )
-
-        reranker_started = (
-            time.perf_counter()
         )
 
-        (
-            final_candidates,
-            reranker_mode,
-            fallback_reason,
-            distinct_options,
-        ) = await self._rerank(
-            query=query,
-            candidates=(
-                eligible_candidates
-            ),
-            bm25_candidates=(
-                bm25_candidates
-            ),
-            vector_candidates=(
-                vector_candidates
-            ),
-            context=context,
-            language=language,
-        )
+        record_timing("reranker_ms", (time.perf_counter() - reranker_started) * 1000)
 
-        record_timing(
-            "reranker_ms",
-            (
-                time.perf_counter()
-                - reranker_started
-            )
-            * 1000,
-        )
+        record_value("reranker_mode", reranker_mode)
 
-        record_value(
-            "reranker_mode",
-            reranker_mode,
-        )
-
-        record_timing(
-            "retrieval_ms",
-            (
-                time.perf_counter()
-                - retrieval_started
-            )
-            * 1000,
-        )
+        record_timing("retrieval_ms", (time.perf_counter() - retrieval_started) * 1000)
 
         return RetrievalPipelineResult(
             query=query,
-            bm25_candidates=(
-                bm25_candidates
-            ),
-            vector_candidates=(
-                vector_candidates
-            ),
-            hybrid_candidates=(
-                hybrid_candidates
-            ),
-            eligible_candidates=(
-                eligible_candidates
-            ),
-            final_candidates=(
-                final_candidates
-            ),
-            eligibility_trace=(
-                eligibility_trace
-            ),
-            reranker_mode=(
-                reranker_mode
-            ),
-            reranker_fallback_reason=(
-                fallback_reason
-            ),
-            distinct_options=(
-                distinct_options
-            ),
+            bm25_candidates=(bm25_candidates),
+            vector_candidates=(vector_candidates),
+            hybrid_candidates=(hybrid_candidates),
+            eligible_candidates=(eligible_candidates),
+            final_candidates=(final_candidates),
+            eligibility_trace=(eligibility_trace),
+            reranker_mode=(reranker_mode),
+            reranker_fallback_reason=(fallback_reason),
+            distinct_options=(distinct_options),
         )
 
     async def _timed_bm25(
-        self,
-        *,
-        query: str,
-        knowledge_hints: list[str],
-        language: str | None,
-    ) -> list[
-        KnowledgeCandidate
-    ]:
+        self, *, query: str, knowledge_hints: list[str], language: str | None
+    ) -> list[KnowledgeCandidate]:
         started = time.perf_counter()
 
         try:
             return await self._retrieve_bm25(
-                query=query,
-                knowledge_hints=(
-                    knowledge_hints
-                ),
-                language=language,
+                query=query, knowledge_hints=(knowledge_hints), language=language
             )
 
         finally:
-            record_timing(
-                "bm25_ms",
-                (
-                    time.perf_counter()
-                    - started
-                )
-                * 1000,
-            )
+            record_timing("bm25_ms", (time.perf_counter() - started) * 1000)
 
     async def _timed_vector(
-        self,
-        *,
-        query: str,
-        knowledge_hints: list[str],
-        language: str | None,
-    ) -> list[
-        KnowledgeCandidate
-    ]:
+        self, *, query: str, knowledge_hints: list[str], language: str | None
+    ) -> list[KnowledgeCandidate]:
         started = time.perf_counter()
 
         try:
             return await self._retrieve_vector(
-                query=query,
-                knowledge_hints=(
-                    knowledge_hints
-                ),
-                language=language,
+                query=query, knowledge_hints=(knowledge_hints), language=language
             )
 
         finally:
-            record_timing(
-                "vector_ms",
-                (
-                    time.perf_counter()
-                    - started
-                )
-                * 1000,
-            )
+            record_timing("vector_ms", (time.perf_counter() - started) * 1000)
 
     async def _rerank(
         self,
         *,
         query: str,
-        candidates: list[
-            HybridCandidate
-        ],
-        bm25_candidates: list[
-            KnowledgeCandidate
-        ],
-        vector_candidates: list[
-            KnowledgeCandidate
-        ],
+        rerank_query: str | None = None,
+        candidates: list[HybridCandidate],
+        bm25_candidates: list[KnowledgeCandidate],
+        vector_candidates: list[KnowledgeCandidate],
         context: EligibilityContext,
         language: str | None,
-    ) -> tuple[
-        list[RerankedCandidate],
-        str,
-        str | None,
-        list[str],
-    ]:
+    ) -> tuple[list[RerankedCandidate], str, str | None, list[str]]:
         if not candidates:
-            return (
-                [],
-                "none",
-                None,
-                [],
-            )
+            return ([], "none", None, [])
 
         if self._can_use_fast_path(
             candidates=candidates,
-            bm25_candidates=(
-                bm25_candidates
-            ),
-            vector_candidates=(
-                vector_candidates
-            ),
+            bm25_candidates=(bm25_candidates),
+            vector_candidates=(vector_candidates),
         ):
-            results = (
-                self.reranker.rerank(
-                    query=query,
-                    candidates=candidates,
-                    limit=(
-                        self.final_top_k
-                    ),
-                )
+            results = self.reranker.rerank(
+                query=query, candidates=candidates, limit=(self.final_top_k)
             )
 
-            # _can_use_fast_path() approved candidates[0] on BM25/vector
-            # consensus, but the deterministic reranker then re-sorts
-            # with title-overlap bonuses (up to +0.02) that dwarf the
-            # RRF gaps between neighbours (~0.002). Left alone, that
-            # bonus could hand the top slot - and the verbatim answer -
-            # to a different page than the one just approved (an English
-            # "How do I create a demo account?" returned the "Demo
-            # Account and Trading Conditions" page over the account
-            # creation page). Keep the approved candidate first.
-            results = self._pin_fast_path_winner(
-                results=results,
-                winner=candidates[0],
-            )
 
-            return (
-                results,
-                "deterministic_fast_path",
-                None,
-                [],
-            )
+            results = self._pin_fast_path_winner(results=results, winner=candidates[0])
 
-        if (
-            self.semantic_reranker
-            is None
-        ):
+            return (results, "deterministic_fast_path", None, [])
+
+        if self.semantic_reranker is None:
             return (
                 self._filter_by_vector_confidence(
                     self.reranker.rerank(
-                        query=query,
-                        candidates=candidates,
-                        limit=(
-                            self.final_top_k
-                        ),
+                        query=query, candidates=candidates, limit=(self.final_top_k)
                     )
                 ),
                 "deterministic",
@@ -576,69 +281,34 @@ class KnowledgeRetrievalPipeline:
                 [],
             )
 
-        semantic_candidates = (
-            self._semantic_candidate_pool(
-                candidates
-            )
-        )
+        semantic_candidates = self._semantic_candidate_pool(candidates)
 
-        semantic_context = (
-            self._semantic_context(
-                context
-            )
-        )
+        semantic_context = self._semantic_context(context)
 
         try:
-            (
-                results,
-                distinct_options,
-            ) = (
-                await self
-                .semantic_reranker
-                .rerank(
-                    query=query,
-                    candidates=(
-                        semantic_candidates
-                    ),
-                    language=language,
-                    context=(
-                        semantic_context
-                    ),
-                    limit=(
-                        self.final_top_k
-                    ),
-                )
+            results, distinct_options = await self.semantic_reranker.rerank(
+
+                query=(rerank_query or query),
+                candidates=(semantic_candidates),
+                language=language,
+                context=(semantic_context),
+                limit=(self.final_top_k),
             )
 
             results = [
                 item
                 for item in results
-                if (
-                    item.rerank_score
-                    >= self.semantic_min_score
-                )
+                if (item.rerank_score >= self.semantic_min_score)
             ]
 
-            # A disambiguation only makes sense while there are still
-            # at least two live options to choose between - if the
-            # relevance floor above already dropped one of them, acting
-            # on a stale distinct_options list would offer a choice
-            # that no longer exists.
+
             if len(results) < 2:
                 distinct_options = []
 
-            return (
-                results,
-                "semantic",
-                None,
-                distinct_options,
-            )
+            return (results, "semantic", None, distinct_options)
 
         except Exception as exc:
-            fallback_reason = (
-                f"{exc.__class__.__name__}: "
-                f"{str(exc)}"
-            )[:500]
+            fallback_reason = (f"{exc.__class__.__name__}: " f"{str(exc)}")[:500]
 
             logger.warning(
                 (
@@ -650,86 +320,45 @@ class KnowledgeRetrievalPipeline:
                 fallback_reason,
             )
 
-            results = (
-                self.reranker.rerank(
-                    query=query,
-                    candidates=candidates,
-                    limit=(
-                        self.final_top_k
-                    ),
-                )
+            results = self.reranker.rerank(
+                query=query, candidates=candidates, limit=(self.final_top_k)
             )
 
-            results = (
-                self._filter_by_vector_confidence(
-                    results
-                )
-            )
+            results = self._filter_by_vector_confidence(results)
 
-            return (
-                results,
-                "deterministic_fallback",
-                fallback_reason,
-                [],
-            )
+            return (results, "deterministic_fallback", fallback_reason, [])
 
     @staticmethod
     def _pin_fast_path_winner(
-        *,
-        results: list[RerankedCandidate],
-        winner: HybridCandidate,
+        *, results: list[RerankedCandidate], winner: HybridCandidate
     ) -> list[RerankedCandidate]:
         winner_id = winner.candidate.candidate_id
 
-        for index, item in enumerate(
-            results
-        ):
-            if (
-                item.candidate.candidate.candidate_id
-                == winner_id
-            ):
-                return [
-                    item,
-                    *results[:index],
-                    *results[index + 1:],
-                ]
+        for index, item in enumerate(results):
+            if item.candidate.candidate.candidate_id == winner_id:
+                return [item, *results[:index], *results[index + 1 :]]
 
         return results
 
     def _filter_by_vector_confidence(
-        self,
-        results: list[
-            RerankedCandidate
-        ],
+        self, results: list[RerankedCandidate]
     ) -> list[RerankedCandidate]:
-        # Same reasoning as fast_path_min_vector_score: the
-        # deterministic reranker's score is not a real relevance
-        # measure, so when it is used (here, because the semantic
-        # reranker itself failed) still require a minimum raw vector
-        # similarity before trusting a candidate.
+
         return [
             item
             for item in results
             if (
-                item.candidate.vector_score
-                is not None
-                and item.candidate.vector_score
-                >= self.fast_path_min_vector_score
+                item.candidate.vector_score is not None
+                and item.candidate.vector_score >= self.fast_path_min_vector_score
             )
         ]
 
     def _can_use_fast_path(
         self,
         *,
-        candidates: list[
-            HybridCandidate
-        ],
-        bm25_candidates: list[
-            KnowledgeCandidate
-        ],
-        vector_candidates: list[
-            KnowledgeCandidate
-        ],
+        candidates: list[HybridCandidate],
+        bm25_candidates: list[KnowledgeCandidate],
+        vector_candidates: list[KnowledgeCandidate],
     ) -> bool:
         if not self.fast_path_enabled:
             return False
@@ -739,334 +368,141 @@ class KnowledgeRetrievalPipeline:
 
         top_hybrid = candidates[0]
 
-        top_candidate = (
-            top_hybrid.candidate
-        )
+        top_candidate = top_hybrid.candidate
 
-        metadata = (
-            top_candidate.metadata
-        )
+        metadata = top_candidate.metadata
 
-        # The winning candidate must have support
-        # from both lexical and semantic retrieval.
-        if (
-            top_hybrid.bm25_rank is None
-            or top_hybrid.vector_rank is None
-        ):
+
+        if top_hybrid.bm25_rank is None or top_hybrid.vector_rank is None:
             return False
 
-        # Strong retrieval consensus. BM25 rank is allowed some slack
-        # (a longer or more repetitive candidate can out-rank a shorter,
-        # more precise one on keyword density alone - see the real case
-        # this guards against: a 3-platform MT5 password-change page
-        # narrowly beat the portal-level password page on raw BM25 rank
-        # for a generic "change my trading password" question that never
-        # mentioned MT5, purely because its content repeats the phrase
-        # more times). Vector rank is held to a stricter bar - it must
-        # be the actual top semantic match, not merely "close" - because
-        # today's investigation consistently found vector similarity to
-        # be the more trustworthy relevance signal of the two. When BM25
-        # and vector search disagree about which candidate is genuinely
-        # best, that disagreement itself is a sign this needs the
-        # semantic reranker's judgment, not the crude deterministic
-        # fallback score.
-        if (
-            top_hybrid.bm25_rank > 2
-            or top_hybrid.vector_rank != 1
-        ):
+        if top_hybrid.bm25_rank > 2 or top_hybrid.vector_rank != 1:
             return False
 
-        # Rank agreement alone is not a relevance guarantee - see the
-        # comment on self.fast_path_min_vector_score. Require the raw
-        # vector similarity to also clear a minimum bar before trusting
-        # a verbatim, no-LLM-judgment answer.
+
         if (
             top_hybrid.vector_score is None
-            or top_hybrid.vector_score
-            < self.fast_path_min_vector_score
+            or top_hybrid.vector_score < self.fast_path_min_vector_score
         ):
             return False
 
-        market_scope = (
-            getattr(
-                metadata.market_scope,
-                "value",
-                metadata.market_scope,
-            )
-        )
+        market_scope = getattr(metadata.market_scope, "value", metadata.market_scope)
 
-        if (
-            str(market_scope)
-            .strip()
-            .upper()
-            != "GLOBAL"
-        ):
+        if str(market_scope).strip().upper() != "GLOBAL":
             return False
 
-        if (
-            metadata
-            .required_context_fields
-        ):
+        if metadata.required_context_fields:
             return False
 
-        audience = (
-            getattr(
-                metadata.audience,
-                "value",
-                metadata.audience,
-            )
-        )
+        audience = getattr(metadata.audience, "value", metadata.audience)
 
-        if (
-            str(audience)
-            .strip()
-            .upper()
-            not in {
-                "PUBLIC",
-                "BOTH",
-            }
-        ):
+        if str(audience).strip().upper() not in {"PUBLIC", "BOTH"}:
             return False
 
-        bot_mode = (
-            getattr(
-                metadata.bot_mode,
-                "value",
-                metadata.bot_mode,
-            )
-        )
+        bot_mode = getattr(metadata.bot_mode, "value", metadata.bot_mode)
 
-        if (
-            str(bot_mode)
-            .strip()
-            .upper()
-            != "KNOWLEDGE"
-        ):
+        if str(bot_mode).strip().upper() != "KNOWLEDGE":
             return False
 
-        category = (
-            str(
-                metadata.category
-                or ""
-            )
-            .strip()
-            .upper()
-        )
+        category = str(metadata.category or "").strip().upper()
 
-        if (
-            category
-            in self
-            ._FAST_PATH_BLOCKED_CATEGORIES
-        ):
+        if category in self._FAST_PATH_BLOCKED_CATEGORIES:
             return False
 
-        knowledge_type = (
-            str(
-                metadata.knowledge_type
-                or ""
-            )
-            .strip()
-            .upper()
-        )
+        knowledge_type = str(metadata.knowledge_type or "").strip().upper()
 
-        if (
-            knowledge_type
-            in self
-            ._FAST_PATH_BLOCKED_TYPES
-        ):
+        if knowledge_type in self._FAST_PATH_BLOCKED_TYPES:
             return False
 
         return True
-    def _semantic_candidate_pool(
-        self,
-        candidates: list[
-            HybridCandidate
-        ],
-    ) -> list[
-        HybridCandidate
-    ]:
-        limit = (
-            self.semantic_rerank_top_k
-        )
 
-        if (
-            limit is None
-            or limit <= 0
-        ):
+    def _semantic_candidate_pool(
+        self, candidates: list[HybridCandidate]
+    ) -> list[HybridCandidate]:
+        limit = self.semantic_rerank_top_k
+
+        if limit is None or limit <= 0:
             return candidates
 
         return candidates[:limit]
 
     @staticmethod
-    def _semantic_context(
-        context: EligibilityContext,
-    ) -> dict[str, str]:
-        values: dict[
-            str,
-            str,
-        ] = {}
+    def _semantic_context(context: EligibilityContext) -> dict[str, str]:
+        values: dict[str, str] = {}
 
         fields = {
-            "nationality":
-                context.nationality,
-            "country_of_residence":
-                context.country_of_residence,
-            "kyc_document_country":
-                context.kyc_document_country,
-            "referenced_country":
-                context.referenced_country,
+            "nationality": context.nationality,
+            "country_of_residence": context.country_of_residence,
+            "kyc_document_country": context.kyc_document_country,
+            "referenced_country": context.referenced_country,
         }
 
-        for key, value in (
-            fields.items()
-        ):
+        for key, value in fields.items():
             if not value:
                 continue
 
-            normalized = str(
-                value
-            ).strip()
+            normalized = str(value).strip()
 
             if normalized:
-                values[key] = (
-                    normalized
-                )
+                values[key] = normalized
 
         return values
 
     async def _retrieve_bm25(
-        self,
-        *,
-        query: str,
-        knowledge_hints: list[str],
-        language: str | None,
-    ) -> list[
-        KnowledgeCandidate
-    ]:
-        candidates = (
-            await self
-            .bm25_retriever
-            .retrieve(
-                query=query,
-                knowledge_hints=(
-                    knowledge_hints
-                ),
-                limit=(
-                    self.bm25_top_k
-                ),
-            )
+        self, *, query: str, knowledge_hints: list[str], language: str | None
+    ) -> list[KnowledgeCandidate]:
+        candidates = await self.bm25_retriever.retrieve(
+            query=query, knowledge_hints=(knowledge_hints), limit=(self.bm25_top_k)
         )
 
         if language is None:
             return candidates
 
-        normalized_language = (
-            language
-            .strip()
-            .upper()
-        )
+        normalized_language = language.strip().upper()
 
         return [
             candidate
-            for candidate
-            in candidates
-            if (
-                candidate.metadata
-                .language.value.upper()
-                == normalized_language
-            )
+            for candidate in candidates
+            if (candidate.metadata.language.value.upper() == normalized_language)
         ]
 
     async def _retrieve_vector(
-        self,
-        *,
-        query: str,
-        knowledge_hints: list[str],
-        language: str | None,
-    ) -> list[
-        KnowledgeCandidate
-    ]:
+        self, *, query: str, knowledge_hints: list[str], language: str | None
+    ) -> list[KnowledgeCandidate]:
         kwargs = {
             "query": query,
-            "knowledge_hints":
-                knowledge_hints,
-            "limit":
-                self.vector_top_k,
+            "knowledge_hints": knowledge_hints,
+            "limit": self.vector_top_k,
         }
 
         if language is not None:
-            kwargs["language"] = (
-                language
-                .strip()
-                .upper()
-            )
+            kwargs["language"] = language.strip().upper()
 
-        return (
-            await self
-            .vector_retriever
-            .retrieve(
-                **kwargs
-            )
-        )
+        return await self.vector_retriever.retrieve(**kwargs)
 
     def _apply_eligibility(
-        self,
-        *,
-        candidates: list[
-            HybridCandidate
-        ],
-        context: EligibilityContext,
-    ) -> tuple[
-        list[HybridCandidate],
-        list[EligibilityTrace],
-    ]:
-        eligible_candidates: list[
-            HybridCandidate
-        ] = []
+        self, *, candidates: list[HybridCandidate], context: EligibilityContext
+    ) -> tuple[list[HybridCandidate], list[EligibilityTrace]]:
+        eligible_candidates: list[HybridCandidate] = []
 
-        trace: list[
-            EligibilityTrace
-        ] = []
+        trace: list[EligibilityTrace] = []
 
-        for hybrid_candidate in (
-            candidates
-        ):
-            candidate = (
-                hybrid_candidate
-                .candidate
-            )
+        for hybrid_candidate in candidates:
+            candidate = hybrid_candidate.candidate
 
-            result: EligibilityResult = (
-                self
-                .eligibility_policy
-                .evaluate(
-                    candidate=candidate,
-                    context=context,
-                )
+            result: EligibilityResult = self.eligibility_policy.evaluate(
+                candidate=candidate, context=context
             )
 
             trace.append(
                 EligibilityTrace(
-                    knowledge_key=(
-                        candidate
-                        .metadata
-                        .knowledge_key
-                    ),
-                    eligible=(
-                        result.eligible
-                    ),
-                    reasons=list(
-                        result.reasons
-                    ),
+                    knowledge_key=(candidate.metadata.knowledge_key),
+                    eligible=(result.eligible),
+                    reasons=list(result.reasons),
                 )
             )
 
             if result.eligible:
-                eligible_candidates.append(
-                    hybrid_candidate
-                )
+                eligible_candidates.append(hybrid_candidate)
 
-        return (
-            eligible_candidates,
-            trace,
-        )
+        return (eligible_candidates, trace)

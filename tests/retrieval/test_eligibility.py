@@ -8,10 +8,7 @@ from app.knowledge.enums import (
     SourceAuthority,
 )
 from app.knowledge.schemas import KnowledgeMetadata
-from app.retrieval.eligibility import (
-    EligibilityContext,
-    KnowledgeEligibilityPolicy,
-)
+from app.retrieval.eligibility import EligibilityContext, KnowledgeEligibilityPolicy
 from app.retrieval.schemas import KnowledgeCandidate
 
 
@@ -40,9 +37,7 @@ def make_candidate(
         market_scope=market_scope,
         countries=countries or [],
         regions=regions or [],
-        required_context_fields=(
-            required_context_fields or []
-        ),
+        required_context_fields=(required_context_fields or []),
         bot_mode=bot_mode,
         fallback_policy=FallbackPolicy.NONE,
     )
@@ -60,14 +55,9 @@ def make_candidate(
 def test_global_article_is_allowed():
     policy = KnowledgeEligibilityPolicy()
 
-    candidate = make_candidate(
-        market_scope=MarketScope.GLOBAL,
-    )
+    candidate = make_candidate(market_scope=MarketScope.GLOBAL)
 
-    result = policy.evaluate(
-        candidate=candidate,
-        context=EligibilityContext(),
-    )
+    result = policy.evaluate(candidate=candidate, context=EligibilityContext())
 
     assert result.eligible is True
     assert result.reasons == []
@@ -79,16 +69,11 @@ def test_country_article_is_allowed_when_context_matches():
     candidate = make_candidate(
         market_scope=MarketScope.COUNTRY,
         countries=["AF"],
-        required_context_fields=[
-            "kyc_document_country"
-        ],
+        required_context_fields=["kyc_document_country"],
     )
 
     result = policy.evaluate(
-        candidate=candidate,
-        context=EligibilityContext(
-            kyc_document_country="AF",
-        ),
+        candidate=candidate, context=EligibilityContext(kyc_document_country="AF")
     )
 
     assert result.eligible is True
@@ -101,24 +86,16 @@ def test_country_article_is_blocked_when_context_mismatches():
     candidate = make_candidate(
         market_scope=MarketScope.COUNTRY,
         countries=["AF"],
-        required_context_fields=[
-            "kyc_document_country"
-        ],
+        required_context_fields=["kyc_document_country"],
     )
 
     result = policy.evaluate(
-        candidate=candidate,
-        context=EligibilityContext(
-            kyc_document_country="IR",
-        ),
+        candidate=candidate, context=EligibilityContext(kyc_document_country="IR")
     )
 
     assert result.eligible is False
 
-    assert (
-        "COUNTRY_CONTEXT_MISMATCH"
-        in result.reasons
-    )
+    assert "COUNTRY_CONTEXT_MISMATCH" in result.reasons
 
 
 def test_country_article_is_blocked_when_context_missing():
@@ -127,51 +104,32 @@ def test_country_article_is_blocked_when_context_missing():
     candidate = make_candidate(
         market_scope=MarketScope.COUNTRY,
         countries=["AF"],
-        required_context_fields=[
-            "kyc_document_country"
-        ],
+        required_context_fields=["kyc_document_country"],
     )
 
-    result = policy.evaluate(
-        candidate=candidate,
-        context=EligibilityContext(),
-    )
+    result = policy.evaluate(candidate=candidate, context=EligibilityContext())
 
     assert result.eligible is False
 
-    assert (
-        "MISSING_CONTEXT:kyc_document_country"
-        in result.reasons
-    )
+    assert "MISSING_CONTEXT:kyc_document_country" in result.reasons
 
-    assert (
-        "COUNTRY_CONTEXT_MISSING"
-        in result.reasons
-    )
+    assert "COUNTRY_CONTEXT_MISSING" in result.reasons
 
 
 def test_country_article_without_context_basis_is_blocked():
     policy = KnowledgeEligibilityPolicy()
 
     candidate = make_candidate(
-        market_scope=MarketScope.COUNTRY,
-        countries=["IR"],
-        required_context_fields=[],
+        market_scope=MarketScope.COUNTRY, countries=["IR"], required_context_fields=[]
     )
 
     result = policy.evaluate(
-        candidate=candidate,
-        context=EligibilityContext(
-            country_of_residence="IR",
-        ),
+        candidate=candidate, context=EligibilityContext(country_of_residence="IR")
     )
 
     assert result.eligible is False
 
-    assert (
-        "COUNTRY_CONTEXT_BASIS_MISSING"
-        in result.reasons
-    )
+    assert "COUNTRY_CONTEXT_BASIS_MISSING" in result.reasons
 
 
 def test_lookup_article_is_allowed_for_authenticated_client():
@@ -180,17 +138,12 @@ def test_lookup_article_is_allowed_for_authenticated_client():
     candidate = make_candidate(
         audience=Audience.CLIENT,
         bot_mode=BotMode.LOOKUP,
-        required_context_fields=[
-            "client_id"
-        ],
+        required_context_fields=["client_id"],
     )
 
     result = policy.evaluate(
         candidate=candidate,
-        context=EligibilityContext(
-            is_authenticated=True,
-            client_id="12345",
-        ),
+        context=EligibilityContext(is_authenticated=True, client_id="12345"),
     )
 
     assert result.eligible is True
@@ -203,78 +156,47 @@ def test_lookup_article_is_blocked_without_authentication():
     candidate = make_candidate(
         audience=Audience.CLIENT,
         bot_mode=BotMode.LOOKUP,
-        required_context_fields=[
-            "client_id"
-        ],
+        required_context_fields=["client_id"],
     )
 
     result = policy.evaluate(
         candidate=candidate,
-        context=EligibilityContext(
-            is_authenticated=False,
-            client_id=None,
-        ),
+        context=EligibilityContext(is_authenticated=False, client_id=None),
     )
 
     assert result.eligible is False
 
-    assert (
-        "CLIENT_AUTH_REQUIRED"
-        in result.reasons
-    )
+    assert "CLIENT_AUTH_REQUIRED" in result.reasons
 
-    assert (
-        "MISSING_CONTEXT:client_id"
-        in result.reasons
-    )
+    assert "MISSING_CONTEXT:client_id" in result.reasons
 
-    assert (
-        "LOOKUP_AUTH_REQUIRED"
-        in result.reasons
-    )
+    assert "LOOKUP_AUTH_REQUIRED" in result.reasons
 
-    assert (
-        "LOOKUP_CLIENT_ID_REQUIRED"
-        in result.reasons
-)
+    assert "LOOKUP_CLIENT_ID_REQUIRED" in result.reasons
 
 
 def test_internal_article_is_blocked():
     policy = KnowledgeEligibilityPolicy()
 
-    candidate = make_candidate(
-        audience=Audience.INTERNAL,
-    )
+    candidate = make_candidate(audience=Audience.INTERNAL)
 
     result = policy.evaluate(
         candidate=candidate,
-        context=EligibilityContext(
-            is_authenticated=True,
-            client_id="12345",
-        ),
+        context=EligibilityContext(is_authenticated=True, client_id="12345"),
     )
 
     assert result.eligible is False
 
-    assert (
-        "AUDIENCE_INTERNAL"
-        in result.reasons
-    )
+    assert "AUDIENCE_INTERNAL" in result.reasons
 
 
 def test_region_article_is_allowed_when_region_matches():
     policy = KnowledgeEligibilityPolicy()
 
-    candidate = make_candidate(
-        market_scope=MarketScope.REGION,
-        regions=["MENA"],
-    )
+    candidate = make_candidate(market_scope=MarketScope.REGION, regions=["MENA"])
 
     result = policy.evaluate(
-        candidate=candidate,
-        context=EligibilityContext(
-            resolved_regions={"MENA"},
-        ),
+        candidate=candidate, context=EligibilityContext(resolved_regions={"MENA"})
     )
 
     assert result.eligible is True
@@ -284,64 +206,44 @@ def test_region_article_is_allowed_when_region_matches():
 def test_region_article_is_blocked_when_region_mismatches():
     policy = KnowledgeEligibilityPolicy()
 
-    candidate = make_candidate(
-        market_scope=MarketScope.REGION,
-        regions=["MENA"],
-    )
+    candidate = make_candidate(market_scope=MarketScope.REGION, regions=["MENA"])
 
     result = policy.evaluate(
-        candidate=candidate,
-        context=EligibilityContext(
-            resolved_regions={"EU"},
-        ),
+        candidate=candidate, context=EligibilityContext(resolved_regions={"EU"})
     )
 
     assert result.eligible is False
 
-    assert (
-        "REGION_CONTEXT_MISMATCH"
-        in result.reasons
-    )
+    assert "REGION_CONTEXT_MISMATCH" in result.reasons
+
+
 def test_client_knowledge_requires_authentication():
     policy = KnowledgeEligibilityPolicy()
 
     candidate = make_candidate(
-        audience=Audience.CLIENT,
-        bot_mode=BotMode.KNOWLEDGE,
-        required_context_fields=[],
+        audience=Audience.CLIENT, bot_mode=BotMode.KNOWLEDGE, required_context_fields=[]
     )
 
     result = policy.evaluate(
         candidate=candidate,
-        context=EligibilityContext(
-            is_authenticated=False,
-            client_id=None,
-        ),
+        context=EligibilityContext(is_authenticated=False, client_id=None),
     )
 
     assert result.eligible is False
 
-    assert (
-        "CLIENT_AUTH_REQUIRED"
-        in result.reasons
-    )
+    assert "CLIENT_AUTH_REQUIRED" in result.reasons
 
 
 def test_client_knowledge_does_not_require_client_id():
     policy = KnowledgeEligibilityPolicy()
 
     candidate = make_candidate(
-        audience=Audience.CLIENT,
-        bot_mode=BotMode.KNOWLEDGE,
-        required_context_fields=[],
+        audience=Audience.CLIENT, bot_mode=BotMode.KNOWLEDGE, required_context_fields=[]
     )
 
     result = policy.evaluate(
         candidate=candidate,
-        context=EligibilityContext(
-            is_authenticated=True,
-            client_id=None,
-        ),
+        context=EligibilityContext(is_authenticated=True, client_id=None),
     )
 
     assert result.eligible is True
@@ -352,45 +254,28 @@ def test_filter_returns_only_eligible_candidates():
     policy = KnowledgeEligibilityPolicy()
 
     global_candidate = make_candidate(
-        knowledge_key="KB-GLOBAL-001-EN",
-        market_scope=MarketScope.GLOBAL,
+        knowledge_key="KB-GLOBAL-001-EN", market_scope=MarketScope.GLOBAL
     )
 
     af_candidate = make_candidate(
         knowledge_key="KB-KYC-AF-001-EN",
         market_scope=MarketScope.COUNTRY,
         countries=["AF"],
-        required_context_fields=[
-            "kyc_document_country"
-        ],
+        required_context_fields=["kyc_document_country"],
     )
 
     ir_candidate = make_candidate(
         knowledge_key="KB-KYC-IR-001-EN",
         market_scope=MarketScope.COUNTRY,
         countries=["IR"],
-        required_context_fields=[
-            "kyc_document_country"
-        ],
+        required_context_fields=["kyc_document_country"],
     )
 
     results = policy.filter(
-        candidates=[
-            global_candidate,
-            af_candidate,
-            ir_candidate,
-        ],
-        context=EligibilityContext(
-            kyc_document_country="AF",
-        ),
+        candidates=[global_candidate, af_candidate, ir_candidate],
+        context=EligibilityContext(kyc_document_country="AF"),
     )
 
-    keys = [
-        item.metadata.knowledge_key
-        for item in results
-    ]
+    keys = [item.metadata.knowledge_key for item in results]
 
-    assert keys == [
-        "KB-GLOBAL-001-EN",
-        "KB-KYC-AF-001-EN",
-    ]
+    assert keys == ["KB-GLOBAL-001-EN", "KB-KYC-AF-001-EN"]

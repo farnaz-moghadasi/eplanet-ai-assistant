@@ -16,6 +16,4 @@ class KnowledgeCandidate(BaseModel):
 
 
 class RetrievalResult(BaseModel):
-    candidates: list[KnowledgeCandidate] = Field(
-        default_factory=list
-    )
+    candidates: list[KnowledgeCandidate] = Field(default_factory=list)

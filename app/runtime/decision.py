@@ -1,12 +1,9 @@
 from enum import Enum
 from typing import Optional
 
-from pydantic import BaseModel , Field
+from pydantic import BaseModel, Field
 
-from app.runtime.context import (
-    RuntimeContext,
-    has_verified_client_identity,
-)
+from app.runtime.context import RuntimeContext, has_verified_client_identity
 from app.runtime.planner import RequestPlan
 
 
@@ -31,8 +28,7 @@ class RuntimeDecision(BaseModel):
 
 
 def evaluate_request_plan(
-    plan: RequestPlan,
-    context: RuntimeContext,
+    plan: RequestPlan, context: RuntimeContext
 ) -> RuntimeDecision:
 
     if plan.requires_authentication:
@@ -56,11 +52,7 @@ def evaluate_request_plan(
         if field_name == "client_id":
             continue
 
-        context_value = getattr(
-            context,
-            field_name,
-            None,
-        )
+        context_value = getattr(context, field_name, None)
 
         if not context_value or not context_value.value:
             missing_context.append(field_name)
@@ -74,7 +66,5 @@ def evaluate_request_plan(
         )
 
     return RuntimeDecision(
-        state=RuntimeDecisionState.READY,
-        allowed=True,
-        reason="REQUEST_READY",
+        state=RuntimeDecisionState.READY, allowed=True, reason="REQUEST_READY"
     )

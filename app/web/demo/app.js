@@ -17,7 +17,7 @@
       send: "ارسال",
       placeholder: "سؤالت رو اینجا بنویس…",
       footerNote: "پاسخ‌ها بر اساس پایگاه دانش تأییدشده eplanet تولید می‌شوند.",
-      welcome: "سلام 👋 من دستیار هوشمند eplanet هستم. می‌تونی درباره احراز هویت، واریز و برداشت، حساب‌های معاملاتی، MT5، cTrader و سایر خدمات سؤال بپرسی. چه کمکی از دستم برمیاد؟",
+      welcome: "سلام 👋 من دستیار هوش مصنوعی ای‌پلنت هستم. چطور می‌تونم کمکتون کنم؟",
       requestFailed: "درخواست ناموفق بود. لطفاً دوباره تلاش کن.",
       emptyAnswer: "برای این سؤال پاسخ قابل اتکایی پیدا نکردم. لطفاً سؤال را کمی دقیق‌تر مطرح کن.",
       handoff: "برای این مورد به اطلاعات حساب یا بررسی پشتیبانی نیاز است.",
@@ -103,7 +103,7 @@
       send: "Send",
       placeholder: "Ask your question here…",
       footerNote: "Answers are generated from eplanet's approved knowledge base.",
-      welcome: "Hi 👋 I'm the eplanet AI Assistant. You can ask me about KYC, deposits and withdrawals, trading accounts, MT5, cTrader, and other eplanet services. How can I help?",
+      welcome: "Hi 👋 I'm the eplanet AI Assistant. How can I help?",
       requestFailed: "The request failed. Please try again.",
       emptyAnswer: "I couldn't find a reliable answer for that. Please make your question a little more specific.",
       handoff: "This request needs account-specific information or support review.",
@@ -326,11 +326,39 @@
     });
   }
 
-  function appendMessage(role, text, citations = []) {
+  // RTL-script Unicode ranges (Arabic, Persian, Kurdish Sorani all
+  // share this block in practice).
+  const RTL_CHAR_PATTERN = /[؀-ۿݐ-ݿࢠ-ࣿﭐ-﷿ﹰ-﻿]/;
+
+  function detectTextDirection(text) {
+    return RTL_CHAR_PATTERN.test(String(text ?? "")) ? "rtl" : "ltr";
+  }
+
+  // Each bubble's direction must follow its OWN content, not the
+  // demo's UI-chrome language toggle - those are independent (e.g.
+  // the operator can run the interface in English while chatting in
+  // Persian). Reusing document.documentElement.dir for every bubble
+  // left Persian/Arabic replies in an LTR bidi context whenever the
+  // UI language didn't match the conversation language, scrambling
+  // the on-screen order of numbers and words embedded in the RTL
+  // text (reported live, with a screenshot). `language` is the
+  // response's own classified language from the API when known (bot
+  // replies); otherwise direction is detected from the text's own
+  // script.
+  function bubbleDirection(language, text) {
+    const normalized = String(language ?? "").trim().toLowerCase();
+    if (normalized) {
+      return ["fa", "ar", "ku"].includes(normalized) ? "rtl" : "ltr";
+    }
+    return detectTextDirection(text);
+  }
+
+  function appendMessage(role, text, citations = [], language = null) {
     const row = createRow(role);
     const wrapper = document.createElement("div");
     const bubble = document.createElement("div");
     bubble.className = "bubble";
+    bubble.dir = bubbleDirection(language, text);
     appendRichText(bubble, text);
     wrapper.appendChild(bubble);
 
@@ -924,7 +952,7 @@
       if (!answer && data.needs_handoff) answer = t("handoff");
       if (!answer) answer = t("emptyAnswer");
 
-      appendMessage("bot", answer, data.citations || []);
+      appendMessage("bot", answer, data.citations || [], data.language);
       renderTrace(data.debug || null);
     } catch (error) {
       hideTyping();

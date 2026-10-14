@@ -46,11 +46,7 @@ def test_valid_global_knowledge_is_ai_ready():
 def test_non_approved_content_is_rejected():
     validator = KnowledgeValidator()
 
-    result = validator.validate(
-        build_metadata(
-            status=KnowledgeStatus.DRAFT,
-        )
-    )
+    result = validator.validate(build_metadata(status=KnowledgeStatus.DRAFT))
 
     assert result.ai_ready is False
     assert "STATUS_NOT_APPROVED" in result.reasons
@@ -59,11 +55,7 @@ def test_non_approved_content_is_rejected():
 def test_unspecified_market_is_rejected():
     validator = KnowledgeValidator()
 
-    result = validator.validate(
-        build_metadata(
-            market_scope=MarketScope.UNSPECIFIED,
-        )
-    )
+    result = validator.validate(build_metadata(market_scope=MarketScope.UNSPECIFIED))
 
     assert result.ai_ready is False
     assert "MARKET_SCOPE_UNSPECIFIED" in result.reasons
@@ -73,10 +65,7 @@ def test_country_scope_requires_country():
     validator = KnowledgeValidator()
 
     result = validator.validate(
-        build_metadata(
-            market_scope=MarketScope.COUNTRY,
-            countries=[],
-        )
+        build_metadata(market_scope=MarketScope.COUNTRY, countries=[])
     )
 
     assert result.ai_ready is False
@@ -101,10 +90,7 @@ def test_region_scope_requires_region():
     validator = KnowledgeValidator()
 
     result = validator.validate(
-        build_metadata(
-            market_scope=MarketScope.REGION,
-            regions=[],
-        )
+        build_metadata(market_scope=MarketScope.REGION, regions=[])
     )
 
     assert result.ai_ready is False
@@ -114,11 +100,7 @@ def test_region_scope_requires_region():
 def test_internal_content_is_not_client_facing_ai_ready():
     validator = KnowledgeValidator()
 
-    result = validator.validate(
-        build_metadata(
-            audience=Audience.INTERNAL,
-        )
-    )
+    result = validator.validate(build_metadata(audience=Audience.INTERNAL))
 
     assert result.ai_ready is False
     assert "AUDIENCE_INTERNAL" in result.reasons
@@ -205,28 +187,19 @@ def test_unknown_context_field_is_rejected():
     validator = KnowledgeValidator()
 
     result = validator.validate(
-        build_metadata(
-            required_context_fields=[
-                "platform and device",
-            ],
-        )
+        build_metadata(required_context_fields=["platform and device"])
     )
 
     assert result.ai_ready is False
 
-    assert (
-        "UNSUPPORTED_REQUIRED_CONTEXT_FIELD:platform and device"
-        in result.reasons
-    )
+    assert "UNSUPPORTED_REQUIRED_CONTEXT_FIELD:platform and device" in result.reasons
 
 
 def test_future_content_is_not_yet_ai_ready():
     validator = KnowledgeValidator()
 
     result = validator.validate(
-        build_metadata(
-            effective_from=date.today() + timedelta(days=1),
-        )
+        build_metadata(effective_from=date.today() + timedelta(days=1))
     )
 
     assert result.ai_ready is False
@@ -237,9 +210,7 @@ def test_expired_content_is_rejected():
     validator = KnowledgeValidator()
 
     result = validator.validate(
-        build_metadata(
-            valid_until=date.today() - timedelta(days=1),
-        )
+        build_metadata(valid_until=date.today() - timedelta(days=1))
     )
 
     assert result.ai_ready is False
@@ -250,10 +221,7 @@ def test_invalid_validity_range_is_rejected():
     validator = KnowledgeValidator()
 
     result = validator.validate(
-        build_metadata(
-            effective_from=date(2026, 10, 1),
-            valid_until=date(2026, 9, 1),
-        )
+        build_metadata(effective_from=date(2026, 10, 1), valid_until=date(2026, 9, 1))
     )
 
     assert result.ai_ready is False
@@ -263,11 +231,7 @@ def test_invalid_validity_range_is_rejected():
 def test_not_applicable_bot_mode_is_rejected():
     validator = KnowledgeValidator()
 
-    result = validator.validate(
-        build_metadata(
-            bot_mode=BotMode.NOT_APPLICABLE,
-        )
-    )
+    result = validator.validate(build_metadata(bot_mode=BotMode.NOT_APPLICABLE))
 
     assert result.ai_ready is False
     assert "BOT_MODE_NOT_AI_ACCESSIBLE" in result.reasons

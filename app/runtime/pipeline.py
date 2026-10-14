@@ -4,9 +4,7 @@ from pydantic import BaseModel, Field
 
 from app.conversation.schemas import ConversationUnderstanding
 from app.conversation.state import ConversationState
-from app.conversation.understanding import (
-    ConversationUnderstandingService,
-)
+from app.conversation.understanding import ConversationUnderstandingService
 from app.retrieval.base import KnowledgeRetriever
 from app.retrieval.schemas import KnowledgeCandidate
 from app.runtime.context import RuntimeContext
@@ -20,11 +18,7 @@ from app.runtime.eligibility import (
     EligibilityState,
     KnowledgeEligibilityService,
 )
-from app.runtime.planner import (
-    ExecutionMode,
-    RequestPlan,
-    build_request_plan,
-)
+from app.runtime.planner import ExecutionMode, RequestPlan, build_request_plan
 
 
 class PipelineOutcomeState(str, Enum):
@@ -55,9 +49,7 @@ class PipelineOutcome(BaseModel):
 
     reason: str
 
-    missing_context: list[str] = Field(
-        default_factory=list
-    )
+    missing_context: list[str] = Field(default_factory=list)
 
 
 class RequestPipelineResult(BaseModel):
@@ -67,13 +59,9 @@ class RequestPipelineResult(BaseModel):
 
     preflight_decision: RuntimeDecision
 
-    candidate_evaluations: list[CandidateEvaluation] = Field(
-        default_factory=list
-    )
+    candidate_evaluations: list[CandidateEvaluation] = Field(default_factory=list)
 
-    eligible_knowledge: list[KnowledgeCandidate] = Field(
-        default_factory=list
-    )
+    eligible_knowledge: list[KnowledgeCandidate] = Field(default_factory=list)
 
     outcome: PipelineOutcome
 
@@ -87,9 +75,7 @@ class RequestPipeline:
         self.understanding_service = understanding_service
         self.retriever = retriever
 
-        self.eligibility_service = (
-            KnowledgeEligibilityService()
-        )
+        self.eligibility_service = KnowledgeEligibilityService()
 
     async def process(
         self,
@@ -99,51 +85,31 @@ class RequestPipeline:
         runtime_context: RuntimeContext,
     ) -> RequestPipelineResult:
 
-        understanding = (
-            await self.understanding_service.understand(
-                message=message,
-                state=conversation_state,
-            )
+        understanding = await self.understanding_service.understand(
+            message=message, state=conversation_state
         )
 
-        plan = build_request_plan(
-            understanding
-        )
+        plan = build_request_plan(understanding)
 
-        preflight_decision = evaluate_request_plan(
-            plan,
-            runtime_context,
-        )
+        preflight_decision = evaluate_request_plan(plan, runtime_context)
 
-        # ---------------------------------------------------------
-        # 1. Preflight hard gate
-        # ---------------------------------------------------------
+        # Preflight hard gate
 
-        if (
-            preflight_decision.state
-            == RuntimeDecisionState.AUTHENTICATION_REQUIRED
-        ):
+
+        if preflight_decision.state == RuntimeDecisionState.AUTHENTICATION_REQUIRED:
             return RequestPipelineResult(
                 understanding=understanding,
                 plan=plan,
                 preflight_decision=preflight_decision,
                 outcome=PipelineOutcome(
-                    state=(
-                        PipelineOutcomeState
-                        .AUTHENTICATION_REQUIRED
-                    ),
+                    state=(PipelineOutcomeState.AUTHENTICATION_REQUIRED),
                     allowed=False,
                     reason=preflight_decision.reason,
-                    missing_context=(
-                        preflight_decision.missing_context
-                    ),
+                    missing_context=(preflight_decision.missing_context),
                 ),
             )
 
-        if (
-            preflight_decision.state
-            == RuntimeDecisionState.CONTEXT_REQUIRED
-        ):
+        if preflight_decision.state == RuntimeDecisionState.CONTEXT_REQUIRED:
             return RequestPipelineResult(
                 understanding=understanding,
                 plan=plan,
@@ -152,20 +118,14 @@ class RequestPipeline:
                     state=PipelineOutcomeState.CONTEXT_REQUIRED,
                     allowed=False,
                     reason=preflight_decision.reason,
-                    missing_context=(
-                        preflight_decision.missing_context
-                    ),
+                    missing_context=(preflight_decision.missing_context),
                 ),
             )
 
-        # ---------------------------------------------------------
-        # 2. Pure lookup request
-        # ---------------------------------------------------------
 
-        if (
-            plan.mode == ExecutionMode.LOOKUP
-            and not plan.requires_knowledge
-        ):
+        #  Pure lookup request
+
+        if plan.mode == ExecutionMode.LOOKUP and not plan.requires_knowledge:
             return RequestPipelineResult(
                 understanding=understanding,
                 plan=plan,
@@ -177,9 +137,9 @@ class RequestPipeline:
                 ),
             )
 
-        # ---------------------------------------------------------
-        # 3. Knowledge retrieval
-        # ---------------------------------------------------------
+
+        # Knowledge retrieval
+
 
         if plan.requires_knowledge:
             if self.retriever is None:
@@ -188,117 +148,80 @@ class RequestPipeline:
                     plan=plan,
                     preflight_decision=preflight_decision,
                     outcome=PipelineOutcome(
-                        state=(
-                            PipelineOutcomeState
-                            .RETRIEVAL_NOT_CONFIGURED
-                        ),
+                        state=(PipelineOutcomeState.RETRIEVAL_NOT_CONFIGURED),
                         allowed=False,
                         reason="KNOWLEDGE_RETRIEVER_NOT_CONFIGURED",
                     ),
                 )
 
             candidates = await self.retriever.retrieve(
-                query=message,
-                knowledge_hints=plan.knowledge_hints,
+                query=message, knowledge_hints=plan.knowledge_hints
             )
 
-            candidate_evaluations: list[
-                CandidateEvaluation
-            ] = []
+            candidate_evaluations: list[CandidateEvaluation] = []
 
-            eligible_knowledge: list[
-                KnowledgeCandidate
-            ] = []
+            eligible_knowledge: list[KnowledgeCandidate] = []
 
             for candidate in candidates:
-                eligibility = (
-                    self.eligibility_service.evaluate(
-                        candidate.metadata,
-                        runtime_context,
-                    )
+                eligibility = self.eligibility_service.evaluate(
+                    candidate.metadata, runtime_context
                 )
 
                 candidate_evaluations.append(
-                    CandidateEvaluation(
-                        candidate=candidate,
-                        eligibility=eligibility,
-                    )
+                    CandidateEvaluation(candidate=candidate, eligibility=eligibility)
                 )
 
                 if (
-                    eligibility.state
-                    == EligibilityState.ELIGIBLE
+                    eligibility.state == EligibilityState.ELIGIBLE
                     and eligibility.eligible
                 ):
                     eligible_knowledge.append(candidate)
 
-            # -----------------------------------------------------
-            # 4. At least one valid knowledge candidate exists
-            # -----------------------------------------------------
+
+            # At least one valid knowledge candidate exists
+
 
             if eligible_knowledge:
                 if plan.requires_live_state:
-                    final_state = (
-                        PipelineOutcomeState.READY_FOR_LOOKUP
-                    )
-                    reason = (
-                        "KNOWLEDGE_READY_LIVE_LOOKUP_REQUIRED"
-                    )
+                    final_state = PipelineOutcomeState.READY_FOR_LOOKUP
+                    reason = "KNOWLEDGE_READY_LIVE_LOOKUP_REQUIRED"
                 else:
-                    final_state = (
-                        PipelineOutcomeState
-                        .READY_FOR_GENERATION
-                    )
+                    final_state = PipelineOutcomeState.READY_FOR_GENERATION
                     reason = "ELIGIBLE_KNOWLEDGE_FOUND"
 
                 return RequestPipelineResult(
                     understanding=understanding,
                     plan=plan,
                     preflight_decision=preflight_decision,
-                    candidate_evaluations=(
-                        candidate_evaluations
-                    ),
+                    candidate_evaluations=(candidate_evaluations),
                     eligible_knowledge=eligible_knowledge,
                     outcome=PipelineOutcome(
-                        state=final_state,
-                        allowed=True,
-                        reason=reason,
+                        state=final_state, allowed=True, reason=reason
                     ),
                 )
 
-            # -----------------------------------------------------
-            # 5. No eligible candidate:
-            #    inspect why candidates were rejected
-            # -----------------------------------------------------
+
+            # No eligible candidate:inspect why candidates were rejected  
+
 
             authentication_results = [
                 item
                 for item in candidate_evaluations
-                if item.eligibility.state
-                == EligibilityState.AUTHENTICATION_REQUIRED
+                if item.eligibility.state == EligibilityState.AUTHENTICATION_REQUIRED
             ]
 
             if authentication_results:
-                missing = self._collect_missing_context(
-                    authentication_results
-                )
+                missing = self._collect_missing_context(authentication_results)
 
                 return RequestPipelineResult(
                     understanding=understanding,
                     plan=plan,
                     preflight_decision=preflight_decision,
-                    candidate_evaluations=(
-                        candidate_evaluations
-                    ),
+                    candidate_evaluations=(candidate_evaluations),
                     outcome=PipelineOutcome(
-                        state=(
-                            PipelineOutcomeState
-                            .AUTHENTICATION_REQUIRED
-                        ),
+                        state=(PipelineOutcomeState.AUTHENTICATION_REQUIRED),
                         allowed=False,
-                        reason=(
-                            "KNOWLEDGE_REQUIRES_AUTHENTICATION"
-                        ),
+                        reason=("KNOWLEDGE_REQUIRES_AUTHENTICATION"),
                         missing_context=missing,
                     ),
                 )
@@ -306,30 +229,21 @@ class RequestPipeline:
             clarification_results = [
                 item
                 for item in candidate_evaluations
-                if item.eligibility.state
-                == EligibilityState.CLARIFICATION_REQUIRED
+                if item.eligibility.state == EligibilityState.CLARIFICATION_REQUIRED
             ]
 
             if clarification_results:
-                missing = self._collect_missing_context(
-                    clarification_results
-                )
+                missing = self._collect_missing_context(clarification_results)
 
                 return RequestPipelineResult(
                     understanding=understanding,
                     plan=plan,
                     preflight_decision=preflight_decision,
-                    candidate_evaluations=(
-                        candidate_evaluations
-                    ),
+                    candidate_evaluations=(candidate_evaluations),
                     outcome=PipelineOutcome(
-                        state=(
-                            PipelineOutcomeState.CONTEXT_REQUIRED
-                        ),
+                        state=(PipelineOutcomeState.CONTEXT_REQUIRED),
                         allowed=False,
-                        reason=(
-                            "KNOWLEDGE_CONTEXT_REQUIRED"
-                        ),
+                        reason=("KNOWLEDGE_CONTEXT_REQUIRED"),
                         missing_context=missing,
                     ),
                 )
@@ -337,8 +251,7 @@ class RequestPipeline:
             handoff_results = [
                 item
                 for item in candidate_evaluations
-                if item.eligibility.state
-                == EligibilityState.HANDOFF_REQUIRED
+                if item.eligibility.state == EligibilityState.HANDOFF_REQUIRED
             ]
 
             if handoff_results:
@@ -346,14 +259,9 @@ class RequestPipeline:
                     understanding=understanding,
                     plan=plan,
                     preflight_decision=preflight_decision,
-                    candidate_evaluations=(
-                        candidate_evaluations
-                    ),
+                    candidate_evaluations=(candidate_evaluations),
                     outcome=PipelineOutcome(
-                        state=(
-                            PipelineOutcomeState
-                            .HANDOFF_REQUIRED
-                        ),
+                        state=(PipelineOutcomeState.HANDOFF_REQUIRED),
                         allowed=False,
                         reason="KNOWLEDGE_REQUIRES_HANDOFF",
                     ),
@@ -363,22 +271,16 @@ class RequestPipeline:
                 understanding=understanding,
                 plan=plan,
                 preflight_decision=preflight_decision,
-                candidate_evaluations=(
-                    candidate_evaluations
-                ),
+                candidate_evaluations=(candidate_evaluations),
                 outcome=PipelineOutcome(
-                    state=(
-                        PipelineOutcomeState
-                        .NO_ELIGIBLE_KNOWLEDGE
-                    ),
+                    state=(PipelineOutcomeState.NO_ELIGIBLE_KNOWLEDGE),
                     allowed=False,
                     reason="NO_ELIGIBLE_KNOWLEDGE_FOUND",
                 ),
             )
 
-        # ---------------------------------------------------------
-        # 6. Defensive fallback
-        # ---------------------------------------------------------
+
+        #  Defensive fallback
 
         return RequestPipelineResult(
             understanding=understanding,
@@ -392,15 +294,11 @@ class RequestPipeline:
         )
 
     @staticmethod
-    def _collect_missing_context(
-        evaluations: list[CandidateEvaluation],
-    ) -> list[str]:
+    def _collect_missing_context(evaluations: list[CandidateEvaluation]) -> list[str]:
         fields: list[str] = []
 
         for evaluation in evaluations:
-            for field_name in (
-                evaluation.eligibility.missing_context
-            ):
+            for field_name in evaluation.eligibility.missing_context:
                 if field_name not in fields:
                     fields.append(field_name)
 

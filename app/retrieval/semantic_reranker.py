@@ -11,18 +11,13 @@ from app.retrieval.hybrid import HybridCandidate
 class SemanticRerankItem(BaseModel):
     candidate_id: str
 
-    relevance_score: float = Field(
-        ge=0.0,
-        le=1.0,
-    )
+    relevance_score: float = Field(ge=0.0, le=1.0)
 
     rationale: str = ""
 
 
 class SemanticRerankResponse(BaseModel):
-    items: list[SemanticRerankItem] = Field(
-        default_factory=list
-    )
+    items: list[SemanticRerankItem] = Field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -75,6 +70,34 @@ Worse:
 "fees", and "troubleshooting" are different intents even when they refer
 to the same product.
 
+2a. A question about WHICH ACCOUNT TYPE is needed or eligible for
+something ("do I need a separate account for gold?", "which account
+lets me trade crypto?") is a different intent from a question about HOW
+TO operate the trading platform's interface for that same thing (adding
+a symbol to a watchlist, placing an order, viewing quotes) - even
+though both may mention the same instrument or symbol by name and so
+look similar on a surface/keyword level. A platform-interface how-to
+page never answers an account-eligibility question, no matter how many
+of the query's words it shares.
+
+Example (reported live - the interface page was scored 0.96 and the
+actually-relevant account-specifications page was never ranked at all):
+
+Query:
+"می‌خوام هم رو جفت‌ارزها هم رو طلا کار کنم، باید برای طلا حساب جدا
+داشته باشم؟" ("I want to trade both currency pairs and gold - do I
+need a separate account for gold?")
+
+Better: a candidate specifying which account type(s) support gold
+trading and whether that overlaps with forex/currency-pair trading
+(e.g. "Trading Account Specifications", "Gold Special Account").
+
+Worse (do not rank above the above): "View Symbols and Watchlist in
+MetaTrader 5" - this explains how to find and add a symbol to a
+watchlist in the platform UI, not which account type is required for
+it. Sharing the words "symbol"/"gold"/"currency pair" with the query
+does not make it relevant to an account-eligibility question.
+
 3. Use the candidate title and content together.
 
 4. Market-specific relevance may be used only when the backend-provided
@@ -124,12 +147,7 @@ Do not answer the user.
 
 
 class SemanticKnowledgeReranker:
-    def __init__(
-        self,
-        *,
-        llm: StructuredLLM,
-        max_content_chars: int = 2500,
-    ):
+    def __init__(self, *, llm: StructuredLLM, max_content_chars: int = 2500):
         self.llm = llm
         self.max_content_chars = max_content_chars
 
@@ -146,86 +164,47 @@ class SemanticKnowledgeReranker:
             return []
 
         prompt = self._build_prompt(
-            query=query,
-            candidates=candidates,
-            language=language,
-            context=context or {},
+            query=query, candidates=candidates, language=language, context=context or {}
         )
 
         response = await self.llm.generate_structured(
-            system_prompt=(
-                SEMANTIC_RERANK_SYSTEM_PROMPT
-            ),
+            system_prompt=(SEMANTIC_RERANK_SYSTEM_PROMPT),
             user_prompt=prompt,
-            response_model=(
-                SemanticRerankResponse
-            ),
+            response_model=(SemanticRerankResponse),
         )
 
-        score_map = {
-            item.candidate_id: item
-            for item in response.items
-        }
+        score_map = {item.candidate_id: item for item in response.items}
 
-        reranked: list[
-            SemanticRerankedCandidate
-        ] = []
+        reranked: list[SemanticRerankedCandidate] = []
 
         for hybrid_candidate in candidates:
-            candidate = (
-                hybrid_candidate.candidate
-            )
+            candidate = hybrid_candidate.candidate
 
-            item = score_map.get(
-                candidate.candidate_id
-            )
+            item = score_map.get(candidate.candidate_id)
 
             if item is None:
                 score = 0.0
 
-                reasons = [
-                    "SEMANTIC_RERANK_RESULT_MISSING"
-                ]
+                reasons = ["SEMANTIC_RERANK_RESULT_MISSING"]
 
             else:
-                score = (
-                    item.relevance_score
-                )
+                score = item.relevance_score
 
-                reasons = [
-                    (
-                        "SEMANTIC_RELEVANCE:"
-                        f"{score:.4f}"
-                    )
-                ]
+                reasons = ["SEMANTIC_RELEVANCE:" f"{score:.4f}"]
 
-                rationale = (
-                    item.rationale.strip()
-                )
+                rationale = item.rationale.strip()
 
                 if rationale:
-                    reasons.append(
-                        (
-                            "SEMANTIC_REASON:"
-                            f"{rationale}"
-                        )
-                    )
+                    reasons.append("SEMANTIC_REASON:" f"{rationale}")
 
             reranked.append(
                 SemanticRerankedCandidate(
-                    candidate=(
-                        hybrid_candidate
-                    ),
-                    rerank_score=score,
-                    reasons=reasons,
+                    candidate=(hybrid_candidate), rerank_score=score, reasons=reasons
                 )
             )
 
         reranked.sort(
-            key=lambda item: (
-                item.rerank_score,
-                item.candidate.hybrid_score,
-            ),
+            key=lambda item: (item.rerank_score, item.candidate.hybrid_score),
             reverse=True,
         )
 
@@ -245,93 +224,46 @@ class SemanticKnowledgeReranker:
             if not value:
                 continue
 
-            context_lines.append(
-                f"{key}: {value}"
-            )
+            context_lines.append(f"{key}: {value}")
 
-        context_text = (
-            "\n".join(context_lines)
-            if context_lines
-            else "none"
-        )
+        context_text = "\n".join(context_lines) if context_lines else "none"
 
         candidate_blocks: list[str] = []
 
-        for index, hybrid in enumerate(
-            candidates,
-            start=1,
-        ):
+        for index, hybrid in enumerate(candidates, start=1):
             candidate = hybrid.candidate
 
             metadata = candidate.metadata
 
-            content = (
-                candidate.content
-                or ""
-            )
+            content = candidate.content or ""
 
-            content = content[
-                : self.max_content_chars
-            ]
+            content = content[: self.max_content_chars]
 
             candidate_blocks.append(
                 "\n".join(
                     [
-                        (
-                            f"CANDIDATE {index}"
-                        ),
-                        (
-                            "candidate_id: "
-                            f"{candidate.candidate_id}"
-                        ),
-                        (
-                            "knowledge_key: "
-                            f"{metadata.knowledge_key}"
-                        ),
+                        (f"CANDIDATE {index}"),
+                        ("candidate_id: " f"{candidate.candidate_id}"),
+                        ("knowledge_key: " f"{metadata.knowledge_key}"),
                         (
                             "canonical_knowledge_key: "
                             f"{metadata.canonical_knowledge_key}"
                         ),
-                        (
-                            "title: "
-                            f"{candidate.title}"
-                        ),
-                        (
-                            "category: "
-                            f"{metadata.category}"
-                        ),
-                        (
-                            "knowledge_type: "
-                            f"{metadata.knowledge_type}"
-                        ),
-                        (
-                            "market_scope: "
-                            f"{metadata.market_scope.value}"
-                        ),
-                        (
-                            "countries: "
-                            f"{metadata.countries}"
-                        ),
-                        (
-                            "hybrid_score: "
-                            f"{hybrid.hybrid_score}"
-                        ),
-                        (
-                            "bm25_rank: "
-                            f"{hybrid.bm25_rank}"
-                        ),
-                        (
-                            "vector_rank: "
-                            f"{hybrid.vector_rank}"
-                        ),
+                        ("title: " f"{candidate.title}"),
+                        ("category: " f"{metadata.category}"),
+                        ("knowledge_type: " f"{metadata.knowledge_type}"),
+                        ("market_scope: " f"{metadata.market_scope.value}"),
+                        ("countries: " f"{metadata.countries}"),
+                        ("hybrid_score: " f"{hybrid.hybrid_score}"),
+                        ("bm25_rank: " f"{hybrid.bm25_rank}"),
+                        ("vector_rank: " f"{hybrid.vector_rank}"),
                         "content:",
                         content,
                     ]
                 )
             )
 
-        return (
-            f"""
+        return f"""
 USER QUERY
 ----------
 {query}
@@ -350,4 +282,3 @@ ELIGIBLE CANDIDATES
 
 Return semantic relevance scores for every candidate.
 """.strip()
-        )

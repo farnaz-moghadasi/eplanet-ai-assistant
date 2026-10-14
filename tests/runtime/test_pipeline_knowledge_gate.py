@@ -22,49 +22,31 @@ from app.runtime.context import (
     IdentityState,
     RuntimeContext,
 )
-from app.runtime.pipeline import (
-    PipelineOutcomeState,
-    RequestPipeline,
-)
+from app.runtime.pipeline import PipelineOutcomeState, RequestPipeline
 
 
 class FakeUnderstandingService:
-    def __init__(
-        self,
-        understanding: ConversationUnderstanding,
-    ):
+    def __init__(self, understanding: ConversationUnderstanding):
         self.understanding = understanding
 
     async def understand(
-        self,
-        *,
-        message: str,
-        state: ConversationState,
+        self, *, message: str, state: ConversationState
     ) -> ConversationUnderstanding:
         return self.understanding
 
 
 class FakeRetriever:
-    def __init__(
-        self,
-        candidates: list[KnowledgeCandidate],
-    ):
+    def __init__(self, candidates: list[KnowledgeCandidate]):
         self.candidates = candidates
 
     async def retrieve(
-        self,
-        *,
-        query: str,
-        knowledge_hints: list[str],
-        limit: int = 10,
+        self, *, query: str, knowledge_hints: list[str], limit: int = 10
     ) -> list[KnowledgeCandidate]:
         return self.candidates[:limit]
 
 
 def make_candidate(
-    *,
-    countries: list[str],
-    required_context_fields: list[str],
+    *, countries: list[str], required_context_fields: list[str]
 ) -> KnowledgeCandidate:
     metadata = KnowledgeMetadata(
         knowledge_key="TEST-KYC",
@@ -100,28 +82,21 @@ async def test_pipeline_uses_nationality_for_afghan_kyc():
     )
 
     candidate = make_candidate(
-        countries=["AF"],
-        required_context_fields=["nationality"],
+        countries=["AF"], required_context_fields=["nationality"]
     )
 
     pipeline = RequestPipeline(
-        understanding_service=FakeUnderstandingService(
-            understanding
-        ),
+        understanding_service=FakeUnderstandingService(understanding),
         retriever=FakeRetriever([candidate]),
     )
 
     context = RuntimeContext(
         identity_state=IdentityState.ANONYMOUS,
         nationality=ContextValue(
-            value="AF",
-            source="USER_DECLARED",
-            trust=ContextTrust.DECLARED,
+            value="AF", source="USER_DECLARED", trust=ContextTrust.DECLARED
         ),
         country_of_residence=ContextValue(
-            value="IR",
-            source="USER_DECLARED",
-            trust=ContextTrust.DECLARED,
+            value="IR", source="USER_DECLARED", trust=ContextTrust.DECLARED
         ),
     )
 
@@ -131,20 +106,13 @@ async def test_pipeline_uses_nationality_for_afghan_kyc():
         runtime_context=context,
     )
 
-    assert (
-        result.outcome.state
-        == PipelineOutcomeState.READY_FOR_GENERATION
-    )
+    assert result.outcome.state == PipelineOutcomeState.READY_FOR_GENERATION
 
     assert result.outcome.allowed is True
 
     assert len(result.eligible_knowledge) == 1
 
-    assert (
-        result.eligible_knowledge[0]
-        .metadata.knowledge_key
-        == "TEST-KYC"
-    )
+    assert result.eligible_knowledge[0].metadata.knowledge_key == "TEST-KYC"
 
 
 @pytest.mark.asyncio
@@ -157,23 +125,18 @@ async def test_pipeline_asks_for_nationality_when_missing():
     )
 
     candidate = make_candidate(
-        countries=["AF"],
-        required_context_fields=["nationality"],
+        countries=["AF"], required_context_fields=["nationality"]
     )
 
     pipeline = RequestPipeline(
-        understanding_service=FakeUnderstandingService(
-            understanding
-        ),
+        understanding_service=FakeUnderstandingService(understanding),
         retriever=FakeRetriever([candidate]),
     )
 
     context = RuntimeContext(
         identity_state=IdentityState.ANONYMOUS,
         country_of_residence=ContextValue(
-            value="IR",
-            source="USER_DECLARED",
-            trust=ContextTrust.DECLARED,
+            value="IR", source="USER_DECLARED", trust=ContextTrust.DECLARED
         ),
     )
 
@@ -183,16 +146,11 @@ async def test_pipeline_asks_for_nationality_when_missing():
         runtime_context=context,
     )
 
-    assert (
-        result.outcome.state
-        == PipelineOutcomeState.CONTEXT_REQUIRED
-    )
+    assert result.outcome.state == PipelineOutcomeState.CONTEXT_REQUIRED
 
     assert result.outcome.allowed is False
 
-    assert result.outcome.missing_context == [
-        "nationality"
-    ]
+    assert result.outcome.missing_context == ["nationality"]
 
 
 @pytest.mark.asyncio
@@ -205,23 +163,18 @@ async def test_pipeline_blocks_market_mismatch():
     )
 
     candidate = make_candidate(
-        countries=["IR"],
-        required_context_fields=["nationality"],
+        countries=["IR"], required_context_fields=["nationality"]
     )
 
     pipeline = RequestPipeline(
-        understanding_service=FakeUnderstandingService(
-            understanding
-        ),
+        understanding_service=FakeUnderstandingService(understanding),
         retriever=FakeRetriever([candidate]),
     )
 
     context = RuntimeContext(
         identity_state=IdentityState.ANONYMOUS,
         nationality=ContextValue(
-            value="AF",
-            source="USER_DECLARED",
-            trust=ContextTrust.DECLARED,
+            value="AF", source="USER_DECLARED", trust=ContextTrust.DECLARED
         ),
     )
 
@@ -231,9 +184,6 @@ async def test_pipeline_blocks_market_mismatch():
         runtime_context=context,
     )
 
-    assert (
-        result.outcome.state
-        == PipelineOutcomeState.NO_ELIGIBLE_KNOWLEDGE
-    )
+    assert result.outcome.state == PipelineOutcomeState.NO_ELIGIBLE_KNOWLEDGE
 
     assert result.outcome.allowed is False

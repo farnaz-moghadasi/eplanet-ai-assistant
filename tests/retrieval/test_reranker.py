@@ -9,7 +9,7 @@ from app.knowledge.enums import (
 )
 from app.knowledge.schemas import KnowledgeMetadata
 from app.retrieval.hybrid import HybridCandidate
-from app.retrieval.reranker import KnowledgeReranker
+from app.retrieval.reranker import KnowledgeReranker, SemanticRerankResponse
 from app.retrieval.schemas import KnowledgeCandidate
 
 
@@ -22,10 +22,7 @@ def make_candidate(
 ) -> HybridCandidate:
     metadata = KnowledgeMetadata(
         knowledge_key=knowledge_key,
-        canonical_knowledge_key=knowledge_key.rsplit(
-            "-",
-            1,
-        )[0],
+        canonical_knowledge_key=knowledge_key.rsplit("-", 1)[0],
         knowledge_type="HOW_TO",
         category="TEST",
         status=KnowledgeStatus.APPROVED,
@@ -79,26 +76,13 @@ def test_ctrader_query_boosts_ctrader_article():
 
     results = reranker.rerank(
         query="How do I log in to cTrader?",
-        candidates=[
-            generic_platform,
-            ctrader_login,
-        ],
+        candidates=[generic_platform, ctrader_login],
         limit=2,
     )
 
-    assert (
-        results[0]
-        .candidate
-        .candidate
-        .metadata
-        .knowledge_key
-        == "KB-CTR-001-EN"
-    )
+    assert results[0].candidate.candidate.metadata.knowledge_key == "KB-CTR-001-EN"
 
-    assert (
-        "CTRADER_KEY_MATCH"
-        in results[0].reasons
-    )
+    assert "CTRADER_KEY_MATCH" in results[0].reasons
 
 
 def test_margin_query_prefers_margin_over_margin_call():
@@ -111,45 +95,22 @@ def test_margin_query_prefers_margin_over_margin_call():
     )
 
     margin = make_candidate(
-        knowledge_key="KB-GEN-MARGIN-EN",
-        title="Understand Margin",
-        hybrid_score=0.0325,
+        knowledge_key="KB-GEN-MARGIN-EN", title="Understand Margin", hybrid_score=0.0325
     )
 
     results = reranker.rerank(
-        query="What is margin?",
-        candidates=[
-            margin_call,
-            margin,
-        ],
-        limit=2,
+        query="What is margin?", candidates=[margin_call, margin], limit=2
     )
 
-    assert (
-        results[0]
-        .candidate
-        .candidate
-        .metadata
-        .knowledge_key
-        == "KB-GEN-MARGIN-EN"
-    )
+    assert results[0].candidate.candidate.metadata.knowledge_key == "KB-GEN-MARGIN-EN"
 
     margin_call_result = next(
         item
         for item in results
-        if (
-            item.candidate
-            .candidate
-            .metadata
-            .knowledge_key
-            == "KB-GEN-MARGIN-CALL-EN"
-        )
+        if (item.candidate.candidate.metadata.knowledge_key == "KB-GEN-MARGIN-CALL-EN")
     )
 
-    assert (
-        "MARGIN_CALL_PENALTY"
-        in margin_call_result.reasons
-    )
+    assert "MARGIN_CALL_PENALTY" in margin_call_result.reasons
 
 
 def test_mt5_query_boosts_mt5_article():
@@ -169,26 +130,13 @@ def test_mt5_query_boosts_mt5_article():
 
     results = reranker.rerank(
         query="How do I connect my account to MT5?",
-        candidates=[
-            generic_article,
-            mt5_article,
-        ],
+        candidates=[generic_article, mt5_article],
         limit=2,
     )
 
-    assert (
-        results[0]
-        .candidate
-        .candidate
-        .metadata
-        .knowledge_key
-        == "KB-MT5-001-EN"
-    )
+    assert results[0].candidate.candidate.metadata.knowledge_key == "KB-MT5-001-EN"
 
-    assert (
-        "MT5_KEY_MATCH"
-        in results[0].reasons
-    )
+    assert "MT5_KEY_MATCH" in results[0].reasons
 
 
 def test_query_in_title_gets_boost():
@@ -201,33 +149,16 @@ def test_query_in_title_gets_boost():
     )
 
     other = make_candidate(
-        knowledge_key="KB-TEST-002-EN",
-        title="Trading Account Help",
-        hybrid_score=0.03,
+        knowledge_key="KB-TEST-002-EN", title="Trading Account Help", hybrid_score=0.03
     )
 
     results = reranker.rerank(
-        query="Reset Trading Account Password",
-        candidates=[
-            other,
-            exact_title,
-        ],
-        limit=2,
+        query="Reset Trading Account Password", candidates=[other, exact_title], limit=2
     )
 
-    assert (
-        results[0]
-        .candidate
-        .candidate
-        .metadata
-        .knowledge_key
-        == "KB-TEST-001-EN"
-    )
+    assert results[0].candidate.candidate.metadata.knowledge_key == "KB-TEST-001-EN"
 
-    assert (
-        "QUERY_IN_TITLE"
-        in results[0].reasons
-    )
+    assert "QUERY_IN_TITLE" in results[0].reasons
 
 
 def test_title_term_overlap_adds_boost():
@@ -240,34 +171,17 @@ def test_title_term_overlap_adds_boost():
     )
 
     unrelated = make_candidate(
-        knowledge_key="KB-TEST-004-EN",
-        title="Deposit Methods",
-        hybrid_score=0.03,
+        knowledge_key="KB-TEST-004-EN", title="Deposit Methods", hybrid_score=0.03
     )
 
     results = reranker.rerank(
-        query="client portal password",
-        candidates=[
-            unrelated,
-            relevant,
-        ],
-        limit=2,
+        query="client portal password", candidates=[unrelated, relevant], limit=2
     )
 
-    assert (
-        results[0]
-        .candidate
-        .candidate
-        .metadata
-        .knowledge_key
-        == "KB-TEST-003-EN"
-    )
+    assert results[0].candidate.candidate.metadata.knowledge_key == "KB-TEST-003-EN"
 
     assert any(
-        reason.startswith(
-            "TITLE_TERM_OVERLAP:"
-        )
-        for reason in results[0].reasons
+        reason.startswith("TITLE_TERM_OVERLAP:") for reason in results[0].reasons
     )
 
 
@@ -283,10 +197,18 @@ def test_reranker_respects_limit():
         for index in range(10)
     ]
 
-    results = reranker.rerank(
-        query="test",
-        candidates=candidates,
-        limit=3,
-    )
+    results = reranker.rerank(query="test", candidates=candidates, limit=3)
 
     assert len(results) == 3
+
+
+def test_distinct_options_schema_instructs_matching_query_language():
+.
+    field = SemanticRerankResponse.model_fields["distinct_options"]
+
+    assert field.description is not None
+
+    description = field.description.lower()
+
+    assert "language" in description
+    assert "query" in description

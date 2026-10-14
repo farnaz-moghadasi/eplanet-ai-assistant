@@ -51,11 +51,7 @@ Return only the requested structured response.
 """
 
 
-def build_grounding_prompt(
-    *,
-    answer: str,
-    evidence_text: str,
-) -> str:
+def build_grounding_prompt(*, answer: str, evidence_text: str) -> str:
     return f"""
 GENERATED ANSWER
 ----------------

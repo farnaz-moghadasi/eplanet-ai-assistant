@@ -2,11 +2,7 @@ from enum import Enum
 
 from pydantic import BaseModel, Field
 
-from app.knowledge.enums import (
-    Audience,
-    BotMode,
-    MarketScope,
-)
+from app.knowledge.enums import Audience, BotMode, MarketScope
 from app.knowledge.schemas import KnowledgeMetadata
 from app.runtime.context import (
     IdentityState,
@@ -37,12 +33,10 @@ class KnowledgeEligibilityService:
         self.market_resolver = MarketAccessResolver()
 
     def evaluate(
-        self,
-        metadata: KnowledgeMetadata,
-        context: RuntimeContext,
+        self, metadata: KnowledgeMetadata, context: RuntimeContext
     ) -> EligibilityResult:
 
-        # 1. Internal content is never customer-facing.
+        #  Internal content is never customer-facing.
         if metadata.audience == Audience.INTERNAL:
             return EligibilityResult(
                 state=EligibilityState.BLOCKED,
@@ -50,7 +44,7 @@ class KnowledgeEligibilityService:
                 reason="INTERNAL_AUDIENCE",
             )
 
-        # 2. Audience gate.
+        #  Audience gate.
         if (
             context.identity_state == IdentityState.ANONYMOUS
             and metadata.audience == Audience.CLIENT
@@ -61,7 +55,7 @@ class KnowledgeEligibilityService:
                 reason="CLIENT_AUDIENCE_REQUIRES_AUTHENTICATION",
             )
 
-        # 3. Bot mode gate.
+        #  Bot mode gate.
         if metadata.bot_mode == BotMode.NOT_APPLICABLE:
             return EligibilityResult(
                 state=EligibilityState.BLOCKED,
@@ -83,7 +77,7 @@ class KnowledgeEligibilityService:
                 reason="GUIDED_FLOW_NOT_SUPPORTED",
             )
 
-        # 4. Required context gate.
+        #  Required context gate.
         missing_context: list[str] = []
 
         for field_name in metadata.required_context_fields:
@@ -92,11 +86,7 @@ class KnowledgeEligibilityService:
                     missing_context.append("client_id")
                 continue
 
-            context_value = getattr(
-                context,
-                field_name,
-                None,
-            )
+            context_value = getattr(context, field_name, None)
 
             if context_value is None or not context_value.value:
                 missing_context.append(field_name)
@@ -117,7 +107,7 @@ class KnowledgeEligibilityService:
                 missing_context=missing_context,
             )
 
-        # 5. LOOKUP requires a verified portal identity.
+        #  LOOKUP requires a verified portal identity.
         if metadata.bot_mode == BotMode.LOOKUP:
             if not has_verified_client_identity(context):
                 return EligibilityResult(
@@ -133,20 +123,16 @@ class KnowledgeEligibilityService:
                 reason="TRUSTED_LOOKUP_REQUIRED",
             )
 
-        # 6. Global content needs no market matching.
+        # Global content needs no market matching.
         if metadata.market_scope == MarketScope.GLOBAL:
             return EligibilityResult(
-                state=EligibilityState.ELIGIBLE,
-                eligible=True,
-                reason="GLOBAL_MARKET",
+                state=EligibilityState.ELIGIBLE, eligible=True, reason="GLOBAL_MARKET"
             )
 
-        # 7. Country-scoped content.
+        #  Country-scoped content.
         if metadata.market_scope == MarketScope.COUNTRY:
-            market_fields = (
-                self.market_resolver.get_market_context_fields(
-                    metadata.required_context_fields
-                )
+            market_fields = self.market_resolver.get_market_context_fields(
+                metadata.required_context_fields
             )
 
             # Bad metadata should not be repaired by runtime guesses.
@@ -169,8 +155,7 @@ class KnowledgeEligibilityService:
             field_name = market_fields[0]
 
             resolution = self.market_resolver.resolve_for_field(
-                context=context,
-                field_name=field_name,
+                context=context, field_name=field_name
             )
 
             if not resolution.resolved_market:
@@ -200,7 +185,7 @@ class KnowledgeEligibilityService:
                 reason="COUNTRY_MARKET_MATCH",
             )
 
-        # 8. Region resolution is deliberately not implemented yet.
+        #  Region resolution is deliberately not implemented yet.
         if metadata.market_scope == MarketScope.REGION:
             return EligibilityResult(
                 state=EligibilityState.BLOCKED,

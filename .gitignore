@@ -4,4 +4,14 @@ __pycache__/
 *.pyc
 .mypy_cache/
 .pytest_cache/
+.ruff_cache/
 evaluation/results/*.json
+
+# Manual dev-only scripts that hit real external services (OpenAI,
+# Qdrant, Confluence) - not part of the automated test suite or CI.
+scripts/test_*.py
+scripts/chat_real_kb.py
+scripts/debug_context_requirements.py
+
+# Regenerable report/audit output, not source.
+artifacts/

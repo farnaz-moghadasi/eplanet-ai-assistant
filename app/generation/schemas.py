@@ -9,16 +9,10 @@ class GeneratedCitation(BaseModel):
 class GeneratedAnswerPayload(BaseModel):
     answer: str = ""
 
-    citations: list[
-        GeneratedCitation
-    ] = Field(
-        default_factory=list
-    )
+    citations: list[GeneratedCitation] = Field(default_factory=list)
 
     abstained: bool = False
 
-    abstain_reason: (
-        str | None
-    ) = None
+    abstain_reason: str | None = None
 
     needs_handoff: bool = False

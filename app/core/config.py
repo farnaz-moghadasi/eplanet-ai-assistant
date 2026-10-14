@@ -5,27 +5,18 @@ from app.knowledge.confluence_client import ConfluenceClient
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=".env",
-        env_file_encoding="utf-8",
-        extra="ignore",
+        env_file=".env", env_file_encoding="utf-8", extra="ignore"
     )
 
     CONFLUENCE_BASE_URL: str = "https://api.atlassian.com"
     CONFLUENCE_CLOUD_ID: str = ""
     CONFLUENCE_EMAIL: str = ""
     CONFLUENCE_API_TOKEN: str = ""
-    ENTITY_ALIASES_PATH: str = ("app/core/entity_aliases.json")
+    ENTITY_ALIASES_PATH: str = "app/core/entity_aliases.json"
     OPENAI_API_KEY: str = ""
     OPENAI_MODEL: str = "gpt-5.6-terra"
-    # Used for classification-style steps (conversation understanding,
-    # semantic reranking) where a lighter/faster model is an acceptable
-    # trade-off. Answer generation and grounding validation keep using
-    # OPENAI_MODEL, since those are the highest-stakes steps (the actual
-    # customer-facing text, and the last check against a wrong/unsupported
-    # answer) - defaults to OPENAI_MODEL when unset so behavior is
-    # unchanged until a faster model is explicitly configured.
     OPENAI_FAST_MODEL: str = ""
-    OPENAI_TIMEOUT_SECONDS: float = 60.0
+    OPENAI_TIMEOUT_SECONDS: float = 20.0
 
     ANTHROPIC_API_KEY: str = ""
     ANTHROPIC_MODEL: str = "claude-sonnet-5"
@@ -46,20 +37,18 @@ class Settings(BaseSettings):
     LOG_FORMAT: str = "json"
 
     DEMO_DEBUG_TRACE_ENABLED: bool = False
-    REDIS_URL: str = ("redis://localhost:6379/0")
-    CONVERSATION_STATE_TTL_SECONDS: int = (86400)
-    KNOWLEDGE_RUNTIME_SOURCE: str = ("snapshot")
-    KNOWLEDGE_SNAPSHOT_PATH: str = ("data/knowledge/"
-                                    "confluence_snapshot.json")
+    REDIS_URL: str = "redis://localhost:6379/0"
+    CONVERSATION_STATE_TTL_SECONDS: int = 86400
+    KNOWLEDGE_RUNTIME_SOURCE: str = "snapshot"
+    KNOWLEDGE_SNAPSHOT_PATH: str = "data/knowledge/" "confluence_snapshot.json"
 
     CHAT_RATE_LIMIT_PER_MINUTE: int = 20
+    ANSWER_CACHE_TTL_SECONDS: int = 86400
 
     @property
     def OPENAI_FAST_MODEL_RESOLVED(self) -> str:
-        return (
-            self.OPENAI_FAST_MODEL
-            or self.OPENAI_MODEL
-        )
+        return self.OPENAI_FAST_MODEL or self.OPENAI_MODEL
+
 
 settings = Settings()
 

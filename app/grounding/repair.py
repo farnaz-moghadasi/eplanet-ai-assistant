@@ -1,13 +1,8 @@
 from __future__ import annotations
 
 from app.ai.base import StructuredLLM
-from app.generation.schemas import (
-    GeneratedAnswerPayload,
-)
-from app.grounding.schemas import (
-    GroundingValidationResult,
-)
-
+from app.generation.schemas import GeneratedAnswerPayload
+from app.grounding.schemas import GroundingValidationResult
 
 GROUNDING_REPAIR_SYSTEM_PROMPT = """
 You repair an eplanet Brokers customer-support answer that failed
@@ -50,35 +45,20 @@ Return only the requested structured response.
 
 
 class GroundingRepairService:
-    def __init__(
-        self,
-        *,
-        llm: StructuredLLM,
-    ):
+    def __init__(self, *, llm: StructuredLLM):
         self.llm = llm
 
     async def repair(
-        self,
-        *,
-        answer: str,
-        validation: GroundingValidationResult,
-        evidence_text: str,
+        self, *, answer: str, validation: GroundingValidationResult, evidence_text: str
     ) -> GeneratedAnswerPayload:
         unsupported_claims = [
-            claim.claim
-            for claim in validation.claims
-            if not claim.supported
+            claim.claim for claim in validation.claims if not claim.supported
         ]
 
-        issues_text = "\n".join(
-            f"- {claim}"
-            for claim in unsupported_claims
-        )
+        issues_text = "\n".join(f"- {claim}" for claim in unsupported_claims)
 
         if not issues_text:
-            issues_text = (
-                "- The answer failed grounding validation."
-            )
+            issues_text = "- The answer failed grounding validation."
 
         prompt = f"""
 ORIGINAL ANSWER
@@ -101,11 +81,7 @@ original answer.
 """.strip()
 
         return await self.llm.generate_structured(
-            system_prompt=(
-                GROUNDING_REPAIR_SYSTEM_PROMPT
-            ),
+            system_prompt=(GROUNDING_REPAIR_SYSTEM_PROMPT),
             user_prompt=prompt,
-            response_model=(
-                GeneratedAnswerPayload
-            ),
+            response_model=(GeneratedAnswerPayload),
         )

@@ -9,10 +9,7 @@ from app.knowledge.enums import (
     SourceAuthority,
 )
 from app.knowledge.schemas import KnowledgeMetadata
-from app.retrieval.eligibility import (
-    EligibilityContext,
-    KnowledgeEligibilityPolicy,
-)
+from app.retrieval.eligibility import EligibilityContext, KnowledgeEligibilityPolicy
 from app.retrieval.hybrid import HybridRetriever
 from app.retrieval.pipeline import KnowledgeRetrievalPipeline
 from app.retrieval.reranker import KnowledgeReranker
@@ -20,19 +17,11 @@ from app.retrieval.schemas import KnowledgeCandidate
 
 
 class FakeRetriever:
-    def __init__(
-        self,
-        candidates: list[KnowledgeCandidate],
-    ):
+    def __init__(self, candidates: list[KnowledgeCandidate]):
         self.candidates = candidates
 
     async def retrieve(
-        self,
-        *,
-        query: str,
-        knowledge_hints: list[str],
-        limit: int,
-        **kwargs,
+        self, *, query: str, knowledge_hints: list[str], limit: int, **kwargs
     ) -> list[KnowledgeCandidate]:
         return self.candidates[:limit]
 
@@ -52,10 +41,7 @@ def make_candidate(
 ) -> KnowledgeCandidate:
     metadata = KnowledgeMetadata(
         knowledge_key=knowledge_key,
-        canonical_knowledge_key=knowledge_key.rsplit(
-            "-",
-            1,
-        )[0],
+        canonical_knowledge_key=knowledge_key.rsplit("-", 1)[0],
         knowledge_type="HOW_TO",
         category="TEST",
         status=KnowledgeStatus.APPROVED,
@@ -68,9 +54,7 @@ def make_candidate(
         market_scope=market_scope,
         countries=countries or [],
         regions=regions or [],
-        required_context_fields=(
-            required_context_fields or []
-        ),
+        required_context_fields=(required_context_fields or []),
         bot_mode=bot_mode,
         fallback_policy=FallbackPolicy.NONE,
     )
@@ -90,28 +74,13 @@ class FakeSemanticReranker:
         self.ranked = ranked
         self.distinct_options = distinct_options
 
-    async def rerank(
-        self,
-        *,
-        query,
-        candidates,
-        language=None,
-        context=None,
-        limit=5,
-    ):
+    async def rerank(self, *, query, candidates, language=None, context=None, limit=5):
         from app.retrieval.reranker import RerankedCandidate
 
-        by_key = {
-            item.candidate.metadata.knowledge_key: item
-            for item in candidates
-        }
+        by_key = {item.candidate.metadata.knowledge_key: item for item in candidates}
 
         results = [
-            RerankedCandidate(
-                candidate=by_key[key],
-                rerank_score=score,
-                reasons=[],
-            )
+            RerankedCandidate(candidate=by_key[key], rerank_score=score, reasons=[])
             for key, score in self.ranked
             if key in by_key
         ]
@@ -127,15 +96,9 @@ def make_pipeline(
     fast_path_enabled: bool = True,
 ) -> KnowledgeRetrievalPipeline:
     return KnowledgeRetrievalPipeline(
-        bm25_retriever=FakeRetriever(
-            bm25_candidates
-        ),
-        vector_retriever=FakeRetriever(
-            vector_candidates
-        ),
-        hybrid_retriever=HybridRetriever(
-            rrf_k=60
-        ),
+        bm25_retriever=FakeRetriever(bm25_candidates),
+        vector_retriever=FakeRetriever(vector_candidates),
+        hybrid_retriever=HybridRetriever(rrf_k=60),
         eligibility_policy=KnowledgeEligibilityPolicy(),
         reranker=KnowledgeReranker(),
         semantic_reranker=semantic_reranker,
@@ -146,37 +109,26 @@ def make_pipeline(
         fast_path_enabled=fast_path_enabled,
     )
 
+
 @pytest.mark.asyncio
 async def test_global_article_survives_pipeline():
     candidate = make_candidate(
-        knowledge_key="KB-GLOBAL-001-EN",
-        title="General Help",
-        score=10.0,
+        knowledge_key="KB-GLOBAL-001-EN", title="General Help", score=10.0
     )
 
-    pipeline = make_pipeline(
-        bm25_candidates=[candidate],
-        vector_candidates=[candidate],
-    )
+    pipeline = make_pipeline(bm25_candidates=[candidate], vector_candidates=[candidate])
 
     result = await pipeline.retrieve(
-        query="general help",
-        context=EligibilityContext(),
-        language="EN",
+        query="general help", context=EligibilityContext(), language="EN"
     )
 
-    assert len(
-        result.final_candidates
-    ) == 1
+    assert len(result.final_candidates) == 1
 
     assert (
-        result.final_candidates[0]
-        .candidate
-        .candidate
-        .metadata
-        .knowledge_key
+        result.final_candidates[0].candidate.candidate.metadata.knowledge_key
         == "KB-GLOBAL-001-EN"
     )
+
 
 @pytest.mark.asyncio
 async def test_country_article_survives_when_context_matches():
@@ -186,36 +138,24 @@ async def test_country_article_survives_when_context_matches():
         score=10.0,
         market_scope=MarketScope.COUNTRY,
         countries=["AF"],
-        required_context_fields=[
-            "kyc_document_country"
-        ],
+        required_context_fields=["kyc_document_country"],
     )
 
-    pipeline = make_pipeline(
-        bm25_candidates=[candidate],
-        vector_candidates=[candidate],
-    )
+    pipeline = make_pipeline(bm25_candidates=[candidate], vector_candidates=[candidate])
 
     result = await pipeline.retrieve(
         query="KYC documents",
-        context=EligibilityContext(
-            kyc_document_country="AF",
-        ),
+        context=EligibilityContext(kyc_document_country="AF"),
         language="EN",
     )
 
-    assert len(
-        result.final_candidates
-    ) == 1
+    assert len(result.final_candidates) == 1
 
     assert (
-        result.final_candidates[0]
-        .candidate
-        .candidate
-        .metadata
-        .knowledge_key
+        result.final_candidates[0].candidate.candidate.metadata.knowledge_key
         == "KB-KYC-AF-001-EN"
     )
+
 
 @pytest.mark.asyncio
 async def test_country_article_is_removed_when_context_mismatches():
@@ -225,36 +165,24 @@ async def test_country_article_is_removed_when_context_mismatches():
         score=10.0,
         market_scope=MarketScope.COUNTRY,
         countries=["AF"],
-        required_context_fields=[
-            "kyc_document_country"
-        ],
+        required_context_fields=["kyc_document_country"],
     )
 
-    pipeline = make_pipeline(
-        bm25_candidates=[candidate],
-        vector_candidates=[candidate],
-    )
+    pipeline = make_pipeline(bm25_candidates=[candidate], vector_candidates=[candidate])
 
     result = await pipeline.retrieve(
         query="KYC documents",
-        context=EligibilityContext(
-            kyc_document_country="IR",
-        ),
+        context=EligibilityContext(kyc_document_country="IR"),
         language="EN",
     )
 
     assert result.final_candidates == []
     assert result.eligible_candidates == []
 
-    assert (
-        result.eligibility_trace[0].eligible
-        is False
-    )
+    assert result.eligibility_trace[0].eligible is False
 
-    assert (
-        "COUNTRY_CONTEXT_MISMATCH"
-        in result.eligibility_trace[0].reasons
-    )
+    assert "COUNTRY_CONTEXT_MISMATCH" in result.eligibility_trace[0].reasons
+
 
 @pytest.mark.asyncio
 async def test_country_article_is_removed_when_context_missing():
@@ -264,39 +192,23 @@ async def test_country_article_is_removed_when_context_missing():
         score=10.0,
         market_scope=MarketScope.COUNTRY,
         countries=["AF"],
-        required_context_fields=[
-            "kyc_document_country"
-        ],
+        required_context_fields=["kyc_document_country"],
     )
 
-    pipeline = make_pipeline(
-        bm25_candidates=[candidate],
-        vector_candidates=[candidate],
-    )
+    pipeline = make_pipeline(bm25_candidates=[candidate], vector_candidates=[candidate])
 
     result = await pipeline.retrieve(
-        query="KYC documents",
-        context=EligibilityContext(),
-        language="EN",
+        query="KYC documents", context=EligibilityContext(), language="EN"
     )
 
     assert result.final_candidates == []
 
-    reasons = (
-        result
-        .eligibility_trace[0]
-        .reasons
-    )
+    reasons = result.eligibility_trace[0].reasons
 
-    assert (
-        "MISSING_CONTEXT:kyc_document_country"
-        in reasons
-    )
+    assert "MISSING_CONTEXT:kyc_document_country" in reasons
 
-    assert (
-        "COUNTRY_CONTEXT_MISSING"
-        in reasons
-    )
+    assert "COUNTRY_CONTEXT_MISSING" in reasons
+
 
 @pytest.mark.asyncio
 async def test_lookup_article_is_removed_for_anonymous_user():
@@ -306,42 +218,25 @@ async def test_lookup_article_is_removed_for_anonymous_user():
         score=10.0,
         audience=Audience.CLIENT,
         bot_mode=BotMode.LOOKUP,
-        required_context_fields=[
-            "client_id"
-        ],
+        required_context_fields=["client_id"],
     )
 
-    pipeline = make_pipeline(
-        bm25_candidates=[candidate],
-        vector_candidates=[candidate],
-    )
+    pipeline = make_pipeline(bm25_candidates=[candidate], vector_candidates=[candidate])
 
     result = await pipeline.retrieve(
         query="What is my KYC status?",
-        context=EligibilityContext(
-            is_authenticated=False,
-            client_id=None,
-        ),
+        context=EligibilityContext(is_authenticated=False, client_id=None),
         language="EN",
     )
 
     assert result.final_candidates == []
 
-    reasons = (
-        result
-        .eligibility_trace[0]
-        .reasons
-    )
+    reasons = result.eligibility_trace[0].reasons
 
-    assert (
-        "CLIENT_AUTH_REQUIRED"
-        in reasons
-    )
+    assert "CLIENT_AUTH_REQUIRED" in reasons
 
-    assert (
-        "LOOKUP_AUTH_REQUIRED"
-        in reasons
-    )
+    assert "LOOKUP_AUTH_REQUIRED" in reasons
+
 
 @pytest.mark.asyncio
 async def test_lookup_article_survives_for_authenticated_client():
@@ -351,37 +246,24 @@ async def test_lookup_article_survives_for_authenticated_client():
         score=10.0,
         audience=Audience.CLIENT,
         bot_mode=BotMode.LOOKUP,
-        required_context_fields=[
-            "client_id"
-        ],
+        required_context_fields=["client_id"],
     )
 
-    pipeline = make_pipeline(
-        bm25_candidates=[candidate],
-        vector_candidates=[candidate],
-    )
+    pipeline = make_pipeline(bm25_candidates=[candidate], vector_candidates=[candidate])
 
     result = await pipeline.retrieve(
         query="What is my KYC status?",
-        context=EligibilityContext(
-            is_authenticated=True,
-            client_id="12345",
-        ),
+        context=EligibilityContext(is_authenticated=True, client_id="12345"),
         language="EN",
     )
 
-    assert len(
-        result.final_candidates
-    ) == 1
+    assert len(result.final_candidates) == 1
 
     assert (
-        result.final_candidates[0]
-        .candidate
-        .candidate
-        .metadata
-        .knowledge_key
+        result.final_candidates[0].candidate.candidate.metadata.knowledge_key
         == "KB-KYC-STATUS-EN"
     )
+
 
 @pytest.mark.asyncio
 async def test_pipeline_filters_wrong_language_from_bm25():
@@ -400,36 +282,22 @@ async def test_pipeline_filters_wrong_language_from_bm25():
     )
 
     pipeline = make_pipeline(
-        bm25_candidates=[
-            fa_candidate,
-            en_candidate,
-        ],
-        vector_candidates=[
-            en_candidate,
-        ],
+        bm25_candidates=[fa_candidate, en_candidate], vector_candidates=[en_candidate]
     )
 
     result = await pipeline.retrieve(
-        query="English guide",
-        context=EligibilityContext(),
-        language="EN",
+        query="English guide", context=EligibilityContext(), language="EN"
     )
 
-    bm25_keys = [
-        item.metadata.knowledge_key
-        for item in result.bm25_candidates
-    ]
+    bm25_keys = [item.metadata.knowledge_key for item in result.bm25_candidates]
 
-    assert bm25_keys == [
-        "KB-TEST-001-EN"
-    ]
+    assert bm25_keys == ["KB-TEST-001-EN"]
+
 
 @pytest.mark.asyncio
 async def test_pipeline_returns_eligibility_trace():
     allowed = make_candidate(
-        knowledge_key="KB-GLOBAL-001-EN",
-        title="Global Help",
-        score=10.0,
+        knowledge_key="KB-GLOBAL-001-EN", title="Global Help", score=10.0
     )
 
     blocked = make_candidate(
@@ -438,65 +306,34 @@ async def test_pipeline_returns_eligibility_trace():
         score=9.0,
         market_scope=MarketScope.COUNTRY,
         countries=["IR"],
-        required_context_fields=[
-            "kyc_document_country"
-        ],
+        required_context_fields=["kyc_document_country"],
     )
 
     pipeline = make_pipeline(
-        bm25_candidates=[
-            allowed,
-            blocked,
-        ],
-        vector_candidates=[
-            allowed,
-            blocked,
-        ],
+        bm25_candidates=[allowed, blocked], vector_candidates=[allowed, blocked]
     )
 
     result = await pipeline.retrieve(
         query="help",
-        context=EligibilityContext(
-            kyc_document_country="AF",
-        ),
+        context=EligibilityContext(kyc_document_country="AF"),
         language="EN",
     )
 
-    trace = {
-        item.knowledge_key: item
-        for item in result.eligibility_trace
-    }
+    trace = {item.knowledge_key: item for item in result.eligibility_trace}
 
-    assert (
-        trace["KB-GLOBAL-001-EN"]
-        .eligible
-        is True
-    )
+    assert trace["KB-GLOBAL-001-EN"].eligible is True
 
-    assert (
-        trace["KB-KYC-IR-001-EN"]
-        .eligible
-        is False
-    )
+    assert trace["KB-KYC-IR-001-EN"].eligible is False
 
-    assert (
-        "COUNTRY_CONTEXT_MISMATCH"
-        in trace[
-            "KB-KYC-IR-001-EN"
-        ].reasons
-    )
+    assert "COUNTRY_CONTEXT_MISMATCH" in trace["KB-KYC-IR-001-EN"].reasons
+
 
 @pytest.mark.asyncio
 async def test_empty_query_returns_empty_result():
-    pipeline = make_pipeline(
-        bm25_candidates=[],
-        vector_candidates=[],
-    )
+    pipeline = make_pipeline(bm25_candidates=[], vector_candidates=[])
 
     result = await pipeline.retrieve(
-        query="   ",
-        context=EligibilityContext(),
-        language="EN",
+        query="   ", context=EligibilityContext(), language="EN"
     )
 
     assert result.bm25_candidates == []
@@ -506,76 +343,47 @@ async def test_empty_query_returns_empty_result():
     assert result.final_candidates == []
     assert result.eligibility_trace == []
 
+
 @pytest.mark.asyncio
 async def test_fast_path_used_when_vector_score_strong():
     candidate = make_candidate(
-        knowledge_key="KB-GLOBAL-STRONG-EN",
-        title="Strong Match",
-        score=0.9,
+        knowledge_key="KB-GLOBAL-STRONG-EN", title="Strong Match", score=0.9
     )
 
-    pipeline = make_pipeline(
-        bm25_candidates=[candidate],
-        vector_candidates=[candidate],
-    )
+    pipeline = make_pipeline(bm25_candidates=[candidate], vector_candidates=[candidate])
 
     result = await pipeline.retrieve(
-        query="strong match",
-        context=EligibilityContext(),
-        language="EN",
+        query="strong match", context=EligibilityContext(), language="EN"
     )
 
-    assert (
-        result.reranker_mode
-        == "deterministic_fast_path"
-    )
+    assert result.reranker_mode == "deterministic_fast_path"
 
-    assert len(
-        result.final_candidates
-    ) == 1
+    assert len(result.final_candidates) == 1
+
 
 @pytest.mark.asyncio
 async def test_fast_path_rejects_weak_vector_score():
-    # Rank agreement alone (top-1 in both BM25 and vector search) is
-    # not a relevance guarantee: an RRF-fused rank score lands in the
-    # same narrow band whether the top candidate is genuinely relevant
-    # or just the least-bad match for a poorly resolved query. A weak
-    # raw vector score should stop the fast path from firing so the
-    # answer does not get returned verbatim with no confidence check.
+
     candidate = make_candidate(
-        knowledge_key="KB-GLOBAL-WEAK-EN",
-        title="Weak Match",
-        score=0.1,
+        knowledge_key="KB-GLOBAL-WEAK-EN", title="Weak Match", score=0.1
     )
 
-    pipeline = make_pipeline(
-        bm25_candidates=[candidate],
-        vector_candidates=[candidate],
-    )
+    pipeline = make_pipeline(bm25_candidates=[candidate], vector_candidates=[candidate])
 
     result = await pipeline.retrieve(
-        query="weak match",
-        context=EligibilityContext(),
-        language="EN",
+        query="weak match", context=EligibilityContext(), language="EN"
     )
 
-    assert (
-        result.reranker_mode
-        != "deterministic_fast_path"
-    )
+    assert result.reranker_mode != "deterministic_fast_path"
 
     assert result.final_candidates == []
 
 
 @pytest.mark.asyncio
 async def test_fast_path_keeps_the_approved_candidate_first():
-    # The fast path approves the candidate BM25 and vector search both
-    # rank first. The deterministic reranker's title-overlap bonus must
-    # not be able to swap a different page into the top slot.
+
     creation = make_candidate(
-        knowledge_key="KB-ACC-001-EN",
-        title="Open a Trading Account",
-        score=0.9,
+        knowledge_key="KB-ACC-001-EN", title="Open a Trading Account", score=0.9
     )
 
     conditions = make_candidate(
@@ -585,27 +393,18 @@ async def test_fast_path_keeps_the_approved_candidate_first():
     )
 
     pipeline = make_pipeline(
-        bm25_candidates=[creation, conditions],
-        vector_candidates=[creation, conditions],
+        bm25_candidates=[creation, conditions], vector_candidates=[creation, conditions]
     )
 
     result = await pipeline.retrieve(
-        query="demo account",
-        context=EligibilityContext(),
-        language="EN",
+        query="demo account", context=EligibilityContext(), language="EN"
     )
 
-    assert (
-        result.reranker_mode
-        == "deterministic_fast_path"
-    )
+    assert result.reranker_mode == "deterministic_fast_path"
 
     top = result.final_candidates[0]
 
-    assert (
-        top.candidate.candidate.metadata.knowledge_key
-        == "KB-ACC-001-EN"
-    )
+    assert top.candidate.candidate.metadata.knowledge_key == "KB-ACC-001-EN"
 
 
 @pytest.mark.asyncio
@@ -622,19 +421,13 @@ async def test_distinct_options_propagate_through_retrieve():
         score=0.85,
     )
 
-    options = [
-        "client portal password",
-        "MetaTrader 5 trading password",
-    ]
+    options = ["client portal password", "MetaTrader 5 trading password"]
 
     pipeline = make_pipeline(
         bm25_candidates=[portal, mt5],
         vector_candidates=[portal, mt5],
         semantic_reranker=FakeSemanticReranker(
-            ranked=[
-                ("KB-ACCESS-001-FA", 0.9),
-                ("KB-MT5-006-FA", 0.85),
-            ],
+            ranked=[("KB-ACCESS-001-FA", 0.9), ("KB-MT5-006-FA", 0.85)],
             distinct_options=options,
         ),
         fast_path_enabled=False,
@@ -652,9 +445,7 @@ async def test_distinct_options_propagate_through_retrieve():
 
 @pytest.mark.asyncio
 async def test_distinct_options_dropped_if_floor_removes_an_option():
-    # A disambiguation is only meaningful while 2+ options are still
-    # live candidates - if the relevance floor drops one, offering a
-    # choice between "X" and a filtered-out ghost would be confusing.
+
     strong = make_candidate(
         knowledge_key="KB-ACCESS-001-FA",
         title="Recover client portal password",
@@ -673,7 +464,7 @@ async def test_distinct_options_dropped_if_floor_removes_an_option():
         semantic_reranker=FakeSemanticReranker(
             ranked=[
                 ("KB-ACCESS-001-FA", 0.9),
-                # Below semantic_min_score (0.5 default): filtered out.
+
                 ("KB-MT5-006-FA", 0.2),
             ],
             distinct_options=[

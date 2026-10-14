@@ -1,8 +1,6 @@
 import pytest
 
-from app.knowledge.ingestion import (
-    KnowledgeIngestionService,
-)
+from app.knowledge.ingestion import KnowledgeIngestionService
 from app.retrieval.bm25 import BM25Retriever
 
 
@@ -19,12 +17,8 @@ def make_page(
     return {
         "id": page_id,
         "title": title,
-        "version": {
-            "number": 1,
-        },
-        "body": {
-            "storage": {
-                "value": f"""
+        "version": {"number": 1},
+        "body": {"storage": {"value": f"""
                     <table>
                         <tr>
                             <td>Knowledge Key</td>
@@ -90,31 +84,19 @@ def make_page(
                     <h1>{title}</h1>
 
                     <p>{content}</p>
-                """
-            }
-        },
+                """}},
     }
 
 
 class FakeConfluenceClient:
-    def __init__(
-        self,
-        pages: dict[str, dict],
-    ):
+    def __init__(self, pages: dict[str, dict]):
         self.pages = pages
 
-    async def get_page(
-        self,
-        page_id: str,
-    ):
+    async def get_page(self, page_id: str):
         if page_id not in self.pages:
-            raise RuntimeError(
-                "PAGE_NOT_FOUND"
-            )
+            raise RuntimeError("PAGE_NOT_FOUND")
 
-        return self.pages[
-            page_id
-        ]
+        return self.pages[page_id]
 
 
 @pytest.mark.asyncio
@@ -126,25 +108,17 @@ async def test_ingestion_indexes_valid_page():
             market_scope="COUNTRY",
             countries="AF",
             required_context_fields="kyc_document_country",
-            content=(
-                "Afghan clients may provide "
-                "approved identity documents."
-            ),
+            content=("Afghan clients may provide " "approved identity documents."),
         )
     }
 
     retriever = BM25Retriever()
 
     service = KnowledgeIngestionService(
-        confluence_client=FakeConfluenceClient(
-            pages
-        ),
-        retriever=retriever,
+        confluence_client=FakeConfluenceClient(pages), retriever=retriever
     )
 
-    report = await service.sync_pages(
-        ["1"]
-    )
+    report = await service.sync_pages(["1"])
 
     assert report.requested_pages == 1
     assert report.successful_pages == 1
@@ -163,26 +137,15 @@ async def test_ingestion_indexes_valid_page():
 
 @pytest.mark.asyncio
 async def test_ingestion_skips_not_approved_page():
-    pages = {
-        "2": make_page(
-            page_id="2",
-            title="Draft Page",
-            status="DRAFT",
-        )
-    }
+    pages = {"2": make_page(page_id="2", title="Draft Page", status="DRAFT")}
 
     retriever = BM25Retriever()
 
     service = KnowledgeIngestionService(
-        confluence_client=FakeConfluenceClient(
-            pages
-        ),
-        retriever=retriever,
+        confluence_client=FakeConfluenceClient(pages), retriever=retriever
     )
 
-    report = await service.sync_pages(
-        ["2"]
-    )
+    report = await service.sync_pages(["2"])
 
     assert report.successful_pages == 1
     assert report.indexed_pages == 0
@@ -193,10 +156,7 @@ async def test_ingestion_skips_not_approved_page():
 
     assert result.ai_ready is False
 
-    assert (
-        "STATUS_NOT_APPROVED"
-        in result.validation_reasons
-    )
+    assert "STATUS_NOT_APPROVED" in result.validation_reasons
 
 
 @pytest.mark.asyncio
@@ -214,15 +174,10 @@ async def test_ingestion_accepts_country_metadata_without_context_field_for_now(
     retriever = BM25Retriever()
 
     service = KnowledgeIngestionService(
-        confluence_client=FakeConfluenceClient(
-            pages
-        ),
-        retriever=retriever,
+        confluence_client=FakeConfluenceClient(pages), retriever=retriever
     )
 
-    report = await service.sync_pages(
-        ["3"]
-    )
+    report = await service.sync_pages(["3"])
 
     assert report.requested_pages == 1
     assert report.successful_pages == 1
@@ -252,15 +207,10 @@ async def test_ingestion_skips_country_without_countries():
     retriever = BM25Retriever()
 
     service = KnowledgeIngestionService(
-        confluence_client=FakeConfluenceClient(
-            pages
-        ),
-        retriever=retriever,
+        confluence_client=FakeConfluenceClient(pages), retriever=retriever
     )
 
-    report = await service.sync_pages(
-        ["4"]
-    )
+    report = await service.sync_pages(["4"])
 
     assert report.requested_pages == 1
     assert report.successful_pages == 1
@@ -272,35 +222,20 @@ async def test_ingestion_skips_country_without_countries():
 
     assert result.ai_ready is False
 
-    assert (
-        "COUNTRIES_REQUIRED"
-        in result.validation_reasons
-    )
+    assert "COUNTRIES_REQUIRED" in result.validation_reasons
+
 
 @pytest.mark.asyncio
 async def test_ingestion_failure_does_not_stop_other_pages():
-    pages = {
-        "1": make_page(
-            page_id="1",
-            title="Valid Article",
-        )
-    }
+    pages = {"1": make_page(page_id="1", title="Valid Article")}
 
     retriever = BM25Retriever()
 
     service = KnowledgeIngestionService(
-        confluence_client=FakeConfluenceClient(
-            pages
-        ),
-        retriever=retriever,
+        confluence_client=FakeConfluenceClient(pages), retriever=retriever
     )
 
-    report = await service.sync_pages(
-        [
-            "404",
-            "1",
-        ]
-    )
+    report = await service.sync_pages(["404", "1"])
 
     assert report.requested_pages == 2
 
@@ -308,9 +243,7 @@ async def test_ingestion_failure_does_not_stop_other_pages():
 
     assert report.indexed_pages == 1
 
-    failed_result = (
-        report.page_results[0]
-    )
+    failed_result = report.page_results[0]
 
     assert failed_result.success is False
     assert "PAGE_NOT_FOUND" in failed_result.error
@@ -318,34 +251,20 @@ async def test_ingestion_failure_does_not_stop_other_pages():
 
 @pytest.mark.asyncio
 async def test_ingestion_deduplicates_page_ids():
-    pages = {
-        "1": make_page(
-            page_id="1",
-            title="Valid Article",
-        )
-    }
+    pages = {"1": make_page(page_id="1", title="Valid Article")}
 
     retriever = BM25Retriever()
 
     service = KnowledgeIngestionService(
-        confluence_client=FakeConfluenceClient(
-            pages
-        ),
-        retriever=retriever,
+        confluence_client=FakeConfluenceClient(pages), retriever=retriever
     )
 
-    report = await service.sync_pages(
-        [
-            "1",
-            "1",
-            " 1 ",
-            "",
-        ]
-    )
+    report = await service.sync_pages(["1", "1", " 1 ", ""])
 
     assert report.requested_pages == 1
     assert report.indexed_pages == 1
-    
+
+
 @pytest.mark.asyncio
 async def test_ingested_content_is_searchable():
     pages = {
@@ -356,8 +275,7 @@ async def test_ingested_content_is_searchable():
             countries="AF",
             required_context_fields="kyc_document_country",
             content=(
-                "Afghan clients can provide "
-                "identity documents for verification."
+                "Afghan clients can provide " "identity documents for verification."
             ),
         ),
         "2": make_page(
@@ -373,33 +291,19 @@ async def test_ingested_content_is_searchable():
     retriever = BM25Retriever()
 
     service = KnowledgeIngestionService(
-        confluence_client=FakeConfluenceClient(
-            pages
-        ),
-        retriever=retriever,
+        confluence_client=FakeConfluenceClient(pages), retriever=retriever
     )
 
-    report = await service.sync_pages(
-        [
-            "1",
-            "2",
-        ]
-    )
+    report = await service.sync_pages(["1", "2"])
 
     assert report.indexed_pages == 2
 
     results = await retriever.retrieve(
         query="Afghan identity verification documents",
-        knowledge_hints=[
-            "KYC",
-            "verification",
-        ],
+        knowledge_hints=["KYC", "verification"],
         limit=5,
     )
 
     assert results
 
-    assert (
-        results[0].metadata.knowledge_key
-        == "KB-1"
-    )
+    assert results[0].metadata.knowledge_key == "KB-1"

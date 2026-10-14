@@ -19,32 +19,23 @@ class RerankedCandidate:
 class SemanticRerankItem(BaseModel):
     candidate_id: str
 
-    relevance_score: float = Field(
-        ge=0.0,
-        le=1.0,
-    )
+    relevance_score: float = Field(ge=0.0, le=1.0)
 
     rationale: str = ""
 
 
 class SemanticRerankResponse(BaseModel):
-    items: list[
-        SemanticRerankItem
-    ] = Field(
-        default_factory=list
-    )
+    items: list[SemanticRerankItem] = Field(default_factory=list)
 
-    # Populated ONLY when two or more top candidates answer genuinely
-    # different sub-questions the user's own wording left unresolved
-    # (e.g. "how do I change my account password?" could mean the
-    # client-portal login password or a specific trading platform's
-    # password - these are different procedures, not degrees of the
-    # same answer). Each entry is a short label, in the query's
-    # language, naming one distinct option. Left empty for the
-    # ordinary case: candidates differing only in relevance, not
-    # in which distinct question they answer.
     distinct_options: list[str] = Field(
-        default_factory=list
+        default_factory=list,
+        description=(
+            "Each entry is a short label for one distinct option, "
+            "written in the SAME LANGUAGE as the user's retrieval "
+            "query (USER MESSAGE LANGUAGE) - never in the language the "
+            "candidate titles happen to be stored in. Translate the "
+            "label; do not change which options exist."
+        ),
     )
 
 
@@ -215,148 +206,68 @@ class KnowledgeReranker:
     """
 
     def rerank(
-        self,
-        *,
-        query: str,
-        candidates: list[
-            HybridCandidate
-        ],
-        limit: int = 5,
-    ) -> list[
-        RerankedCandidate
-    ]:
-        query_normalized = (
-            query.strip().lower()
-        )
+        self, *, query: str, candidates: list[HybridCandidate], limit: int = 5
+    ) -> list[RerankedCandidate]:
+        query_normalized = query.strip().lower()
 
-        results: list[
-            RerankedCandidate
-        ] = []
+        results: list[RerankedCandidate] = []
 
         for item in candidates:
             score = item.hybrid_score
 
-            reasons: list[str] = [
-                "DETERMINISTIC_FALLBACK"
-            ]
+            reasons: list[str] = ["DETERMINISTIC_FALLBACK"]
 
-            title = (
-                item.candidate.title
-                or ""
-            ).lower()
+            title = (item.candidate.title or "").lower()
 
-            knowledge_key = (
-                item.candidate
-                .metadata
-                .knowledge_key
-                or ""
-            ).lower()
+            knowledge_key = (item.candidate.metadata.knowledge_key or "").lower()
 
-            if (
-                query_normalized
-                and query_normalized
-                in title
-            ):
+            if query_normalized and query_normalized in title:
                 score += 0.02
 
-                reasons.append(
-                    "QUERY_IN_TITLE"
-                )
+                reasons.append("QUERY_IN_TITLE")
 
-            query_terms = {
-                term
-                for term
-                in query_normalized.split()
-                if len(term) >= 3
-            }
+            query_terms = {term for term in query_normalized.split() if len(term) >= 3}
 
-            title_terms = set(
-                title.split()
-            )
+            title_terms = set(title.split())
 
-            overlap = (
-                query_terms
-                & title_terms
-            )
+            overlap = query_terms & title_terms
 
             if overlap:
-                boost = min(
-                    0.02,
-                    len(overlap)
-                    * 0.005,
-                )
+                boost = min(0.02, len(overlap) * 0.005)
 
                 score += boost
 
-                reasons.append(
-                    (
-                        "TITLE_TERM_OVERLAP:"
-                        f"{len(overlap)}"
-                    )
-                )
+                reasons.append("TITLE_TERM_OVERLAP:" f"{len(overlap)}")
 
-            if (
-                "ctrader"
-                in query_normalized
-                and "ctr"
-                in knowledge_key
-            ):
+            if "ctrader" in query_normalized and "ctr" in knowledge_key:
                 score += 0.02
 
-                reasons.append(
-                    "CTRADER_KEY_MATCH"
-                )
+                reasons.append("CTRADER_KEY_MATCH")
 
             if (
-                (
-                    "metatrader"
-                    in query_normalized
-                    or "mt5"
-                    in query_normalized
-                )
-                and "mt5"
-                in knowledge_key
-            ):
+                "metatrader" in query_normalized or "mt5" in query_normalized
+            ) and "mt5" in knowledge_key:
                 score += 0.02
 
-                reasons.append(
-                    "MT5_KEY_MATCH"
-                )
+                reasons.append("MT5_KEY_MATCH")
 
             if (
-                (
-                    "margin"
-                    in query_normalized
-                    or "مارجین"
-                    in query_normalized
-                )
-                and "margin-call"
-                in knowledge_key
-                and "call"
-                not in query_normalized
+                ("margin" in query_normalized or "مارجین" in query_normalized)
+                and "margin-call" in knowledge_key
+                and "call" not in query_normalized
             ):
                 score -= 0.01
 
-                reasons.append(
-                    "MARGIN_CALL_PENALTY"
-                )
+                reasons.append("MARGIN_CALL_PENALTY")
 
             results.append(
-                RerankedCandidate(
-                    candidate=item,
-                    rerank_score=score,
-                    reasons=reasons,
-                )
+                RerankedCandidate(candidate=item, rerank_score=score, reasons=reasons)
             )
 
         results.sort(
             key=lambda item: (
                 -item.rerank_score,
-                item
-                .candidate
-                .candidate
-                .metadata
-                .knowledge_key,
+                item.candidate.candidate.metadata.knowledge_key,
             )
         )
 
@@ -364,66 +275,36 @@ class KnowledgeReranker:
 
 
 class SemanticKnowledgeReranker:
-    def __init__(
-        self,
-        *,
-        llm: StructuredLLM,
-        max_content_chars: int = 2500,
-    ):
+    def __init__(self, *, llm: StructuredLLM, max_content_chars: int = 2500):
         self.llm = llm
 
-        self.max_content_chars = (
-            max_content_chars
-        )
+        self.max_content_chars = max_content_chars
 
     async def rerank(
         self,
         *,
         query: str,
-        candidates: list[
-            HybridCandidate
-        ],
+        candidates: list[HybridCandidate],
         language: str | None = None,
-        context: Mapping[
-            str,
-            str,
-        ] | None = None,
+        context: Mapping[str, str] | None = None,
         limit: int = 5,
-    ) -> tuple[
-        list[RerankedCandidate],
-        list[str],
-    ]:
+    ) -> tuple[list[RerankedCandidate], list[str]]:
         if not candidates:
             return [], []
 
         prompt = self._build_prompt(
-            query=query,
-            candidates=candidates,
-            language=language,
-            context=context or {},
+            query=query, candidates=candidates, language=language, context=context or {}
         )
 
-        response = (
-            await self.llm
-            .generate_structured(
-                system_prompt=(
-                    SEMANTIC_RERANK_SYSTEM_PROMPT
-                ),
-                user_prompt=prompt,
-                response_model=(
-                    SemanticRerankResponse
-                ),
-            )
+        response = await self.llm.generate_structured(
+            system_prompt=(SEMANTIC_RERANK_SYSTEM_PROMPT),
+            user_prompt=prompt,
+            response_model=(SemanticRerankResponse),
         )
 
         alias_to_id = {
-            f"C{index}": (
-                item.candidate.candidate_id
-            )
-            for index, item in enumerate(
-                candidates,
-                start=1,
-            )
+            f"C{index}": (item.candidate.candidate_id)
+            for index, item in enumerate(candidates, start=1)
         }
 
         response = response.model_copy(
@@ -431,158 +312,76 @@ class SemanticKnowledgeReranker:
                 "items": [
                     item.model_copy(
                         update={
-                            "candidate_id":
-                                alias_to_id.get(
-                                    item.candidate_id
-                                    .strip(),
-                                    item.candidate_id,
-                                )
+                            "candidate_id": alias_to_id.get(
+                                item.candidate_id.strip(), item.candidate_id
+                            )
                         }
                     )
-                    for item
-                    in response.items
+                    for item in response.items
                 ]
             }
         )
 
-        self._validate_response(
-            response=response,
-            candidates=candidates,
-        )
+        self._validate_response(response=response, candidates=candidates)
 
-        items_by_id = {
-            item.candidate_id:
-                item
-            for item
-            in response.items
-        }
+        items_by_id = {item.candidate_id: item for item in response.items}
 
-        results: list[
-            RerankedCandidate
-        ] = []
+        results: list[RerankedCandidate] = []
 
         for hybrid_candidate in candidates:
-            candidate = (
-                hybrid_candidate.candidate
-            )
+            candidate = hybrid_candidate.candidate
 
-            semantic_item = (
-                items_by_id[
-                    candidate.candidate_id
-                ]
-            )
+            semantic_item = items_by_id[candidate.candidate_id]
 
-            score = (
-                semantic_item
-                .relevance_score
-            )
+            score = semantic_item.relevance_score
 
-            reasons = [
-                (
-                    "SEMANTIC_RELEVANCE:"
-                    f"{score:.4f}"
-                )
-            ]
+            reasons = ["SEMANTIC_RELEVANCE:" f"{score:.4f}"]
 
-            rationale = (
-                semantic_item
-                .rationale
-                .strip()
-            )
+            rationale = semantic_item.rationale.strip()
 
             if rationale:
-                reasons.append(
-                    (
-                        "SEMANTIC_REASON:"
-                        f"{rationale}"
-                    )
-                )
+                reasons.append("SEMANTIC_REASON:" f"{rationale}")
 
             results.append(
                 RerankedCandidate(
-                    candidate=(
-                        hybrid_candidate
-                    ),
-                    rerank_score=score,
-                    reasons=reasons,
+                    candidate=(hybrid_candidate), rerank_score=score, reasons=reasons
                 )
             )
 
         results.sort(
             key=lambda item: (
                 -item.rerank_score,
-                -item
-                .candidate
-                .hybrid_score,
-                item
-                .candidate
-                .candidate
-                .metadata
-                .knowledge_key,
+                -item.candidate.hybrid_score,
+                item.candidate.candidate.metadata.knowledge_key,
             )
         )
 
         distinct_options = [
             option.strip()
-            for option in (
-                response.distinct_options
-            )
+            for option in (response.distinct_options)
             if option and option.strip()
         ]
 
         return results[:limit], distinct_options
 
     def _validate_response(
-        self,
-        *,
-        response: (
-            SemanticRerankResponse
-        ),
-        candidates: list[
-            HybridCandidate
-        ],
+        self, *, response: SemanticRerankResponse, candidates: list[HybridCandidate]
     ) -> None:
-        expected_ids = {
-            item
-            .candidate
-            .candidate_id
-            for item
-            in candidates
-        }
+        expected_ids = {item.candidate.candidate_id for item in candidates}
 
-        returned_ids = [
-            item.candidate_id
-            for item
-            in response.items
-        ]
+        returned_ids = [item.candidate_id for item in response.items]
 
-        returned_id_set = set(
-            returned_ids
-        )
+        returned_id_set = set(returned_ids)
 
-        if (
-            len(returned_ids)
-            != len(returned_id_set)
-        ):
+        if len(returned_ids) != len(returned_id_set):
             raise ValueError(
-                "Semantic reranker "
-                "returned duplicate "
-                "candidate IDs."
+                "Semantic reranker " "returned duplicate " "candidate IDs."
             )
 
-        if (
-            returned_id_set
-            != expected_ids
-        ):
-            missing = (
-                expected_ids
-                - returned_id_set
-            )
+        if returned_id_set != expected_ids:
+            missing = expected_ids - returned_id_set
 
-            unexpected = (
-                returned_id_set
-                - expected_ids
-            )
+            unexpected = returned_id_set - expected_ids
 
             raise ValueError(
                 "Semantic reranker "
@@ -596,126 +395,51 @@ class SemanticKnowledgeReranker:
         self,
         *,
         query: str,
-        candidates: list[
-            HybridCandidate
-        ],
+        candidates: list[HybridCandidate],
         language: str | None,
-        context: Mapping[
-            str,
-            str,
-        ],
+        context: Mapping[str, str],
     ) -> str:
-        context_lines = [
-            f"{key}: {value}"
-            for key, value
-            in context.items()
-            if value
-        ]
+        context_lines = [f"{key}: {value}" for key, value in context.items() if value]
 
-        context_text = (
-            "\n".join(
-                context_lines
-            )
-            if context_lines
-            else "none"
-        )
+        context_text = "\n".join(context_lines) if context_lines else "none"
 
-        candidate_blocks: list[
-            str
-        ] = []
+        candidate_blocks: list[str] = []
 
-        for index, item in enumerate(
-            candidates,
-            start=1,
-        ):
-            candidate = (
-                item.candidate
-            )
+        for index, item in enumerate(candidates, start=1):
+            candidate = item.candidate
 
-            metadata = (
-                candidate.metadata
-            )
+            metadata = candidate.metadata
 
-            content = (
-                candidate.content
-                or ""
-            )
+            content = candidate.content or ""
 
-            content = content[
-                : self.max_content_chars
-            ]
+            content = content[: self.max_content_chars]
 
             block = "\n".join(
                 [
+                    (f"CANDIDATE " f"{index}"),
                     (
-                        f"CANDIDATE "
-                        f"{index}"
-                    ),
-                    (
-                        # Short alias, mapped back to the real ID in
-                        # rerank(). The real IDs are long hash-bearing
-                        # strings (and sibling pages can share most of
-                        # one); the model was observed returning an ID
-                        # with the wrong page prefix, which failed the
-                        # whole rerank and dropped the request onto the
-                        # much weaker deterministic fallback.
+
                         "candidate_id: "
                         f"C{index}"
                     ),
-                    (
-                        "knowledge_key: "
-                        f"{metadata.knowledge_key}"
-                    ),
-                    (
-                        "canonical_knowledge_key: "
-                        f"{metadata.canonical_knowledge_key}"
-                    ),
-                    (
-                        "title: "
-                        f"{candidate.title}"
-                    ),
-                    (
-                        "category: "
-                        f"{metadata.category}"
-                    ),
-                    (
-                        "knowledge_type: "
-                        f"{metadata.knowledge_type}"
-                    ),
-                    (
-                        "market_scope: "
-                        f"{metadata.market_scope.value}"
-                    ),
-                    (
-                        "countries: "
-                        f"{metadata.countries}"
-                    ),
-                    (
-                        "hybrid_score: "
-                        f"{item.hybrid_score}"
-                    ),
-                    (
-                        "bm25_rank: "
-                        f"{item.bm25_rank}"
-                    ),
-                    (
-                        "vector_rank: "
-                        f"{item.vector_rank}"
-                    ),
+                    ("knowledge_key: " f"{metadata.knowledge_key}"),
+                    ("canonical_knowledge_key: " f"{metadata.canonical_knowledge_key}"),
+                    ("title: " f"{candidate.title}"),
+                    ("category: " f"{metadata.category}"),
+                    ("knowledge_type: " f"{metadata.knowledge_type}"),
+                    ("market_scope: " f"{metadata.market_scope.value}"),
+                    ("countries: " f"{metadata.countries}"),
+                    ("hybrid_score: " f"{item.hybrid_score}"),
+                    ("bm25_rank: " f"{item.bm25_rank}"),
+                    ("vector_rank: " f"{item.vector_rank}"),
                     "content:",
                     content,
                 ]
             )
 
-            candidate_blocks.append(
-                block
-            )
+            candidate_blocks.append(block)
 
-        candidates_text = (
-            "\n\n".join(
-                candidate_blocks
-            )
-        )
+        candidates_text = "\n\n".join(candidate_blocks)
 
         return f"""
 USER RETRIEVAL QUERY

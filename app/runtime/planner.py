@@ -39,9 +39,7 @@ class RequestPlan(BaseModel):
     knowledge_hints: list[str] = Field(default_factory=list)
 
 
-def build_request_plan(
-    understanding: ConversationUnderstanding,
-) -> RequestPlan:
+def build_request_plan(understanding: ConversationUnderstanding) -> RequestPlan:
     domain = understanding.domain
     task = understanding.task
 
@@ -50,11 +48,7 @@ def build_request_plan(
             return RequestPlan(
                 mode=ExecutionMode.KNOWLEDGE,
                 requires_knowledge=True,
-                knowledge_hints=[
-                    "KYC",
-                    "identity verification",
-                    "requirements",
-                ],
+                knowledge_hints=["KYC", "identity verification", "requirements"],
             )
 
         if task == ConversationTask.STATUS:
@@ -74,28 +68,18 @@ def build_request_plan(
                 requires_knowledge=True,
                 required_context=["client_id"],
                 lookup_capability=LookupCapability.KYC_STATUS,
-                knowledge_hints=[
-                    "KYC",
-                    "verification troubleshooting",
-                ],
+                knowledge_hints=["KYC", "verification troubleshooting"],
             )
 
         if task == ConversationTask.HOW_TO:
             return RequestPlan(
                 mode=ExecutionMode.KNOWLEDGE,
                 requires_knowledge=True,
-                knowledge_hints=[
-                    "KYC",
-                    "verification",
-                    "how to",
-                ],
+                knowledge_hints=["KYC", "verification", "how to"],
             )
 
     if domain == ConversationDomain.ACCOUNT:
-        if task in {
-            ConversationTask.BALANCE,
-            ConversationTask.LIST,
-        }:
+        if task in {ConversationTask.BALANCE, ConversationTask.LIST}:
             return RequestPlan(
                 mode=ExecutionMode.LOOKUP,
                 requires_authentication=True,
@@ -132,7 +116,4 @@ def build_request_plan(
                 lookup_capability=LookupCapability.MESSAGES,
             )
 
-    return RequestPlan(
-        mode=ExecutionMode.KNOWLEDGE,
-        requires_knowledge=True,
-    )
+    return RequestPlan(mode=ExecutionMode.KNOWLEDGE, requires_knowledge=True)

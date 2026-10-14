@@ -15,16 +15,12 @@ def read_page_ids(path: str) -> list[str]:
     file_path = Path(path)
 
     if not file_path.exists():
-        raise FileNotFoundError(
-            f"Page ID file not found: {file_path}"
-        )
+        raise FileNotFoundError(f"Page ID file not found: {file_path}")
 
     result: list[str] = []
     seen: set[str] = set()
 
-    for raw_line in file_path.read_text(
-        encoding="utf-8"
-    ).splitlines():
+    for raw_line in file_path.read_text(encoding="utf-8").splitlines():
         line = raw_line.strip()
 
         if not line or line.startswith("#"):
@@ -40,9 +36,7 @@ def read_page_ids(path: str) -> list[str]:
 
 
 def safe_error(exc: Exception) -> str:
-    return (
-        f"{exc.__class__.__name__}: {str(exc)}"
-    )[:500]
+    return (f"{exc.__class__.__name__}: {str(exc)}")[:500]
 
 
 async def audit_page(
@@ -86,20 +80,14 @@ async def audit_page(
         result.update(
             {
                 "knowledge_key": metadata.knowledge_key,
-                "canonical_knowledge_key": (
-                    metadata.canonical_knowledge_key
-                ),
+                "canonical_knowledge_key": (metadata.canonical_knowledge_key),
                 "language": metadata.language.value,
                 "status": metadata.status.value,
                 "audience": metadata.audience.value,
-                "market_scope": (
-                    metadata.market_scope.value
-                ),
+                "market_scope": (metadata.market_scope.value),
                 "countries": metadata.countries,
                 "regions": metadata.regions,
-                "required_context_fields": (
-                    metadata.required_context_fields
-                ),
+                "required_context_fields": (metadata.required_context_fields),
                 "bot_mode": metadata.bot_mode.value,
             }
         )
@@ -107,9 +95,7 @@ async def audit_page(
         validation = validator.validate(metadata)
 
         result["ai_ready"] = validation.ai_ready
-        result["validation_reasons"] = (
-            validation.reasons
-        )
+        result["validation_reasons"] = validation.reasons
 
     except Exception as exc:
         result["error"] = safe_error(exc)
@@ -117,34 +103,24 @@ async def audit_page(
     return result
 
 
-async def run_audit(
-    page_ids: list[str],
-) -> list[dict[str, Any]]:
+async def run_audit(page_ids: list[str]) -> list[dict[str, Any]]:
     client = ConfluenceClient(
-    base_url=settings.CONFLUENCE_BASE_URL,
-    cloud_id=settings.CONFLUENCE_CLOUD_ID,
-    email=settings.CONFLUENCE_EMAIL,
-    api_token=settings.CONFLUENCE_API_TOKEN,)
+        base_url=settings.CONFLUENCE_BASE_URL,
+        cloud_id=settings.CONFLUENCE_CLOUD_ID,
+        email=settings.CONFLUENCE_EMAIL,
+        api_token=settings.CONFLUENCE_API_TOKEN,
+    )
 
     parser = KnowledgeParser()
     validator = KnowledgeValidator()
 
     results: list[dict[str, Any]] = []
 
-    for index, page_id in enumerate(
-        page_ids,
-        start=1,
-    ):
-        print(
-            f"[{index}/{len(page_ids)}] "
-            f"Auditing page {page_id}..."
-        )
+    for index, page_id in enumerate(page_ids, start=1):
+        print(f"[{index}/{len(page_ids)}] " f"Auditing page {page_id}...")
 
         result = await audit_page(
-            page_id=page_id,
-            client=client,
-            parser=parser,
-            validator=validator,
+            page_id=page_id, client=client, parser=parser, validator=validator
         )
 
         results.append(result)
@@ -152,37 +128,21 @@ async def run_audit(
     return results
 
 
-def print_summary(
-    results: list[dict[str, Any]],
-) -> None:
+def print_summary(results: list[dict[str, Any]]) -> None:
     total = len(results)
 
-    parsed = sum(
-        1
-        for item in results
-        if item["parsed"]
-    )
+    parsed = sum(1 for item in results if item["parsed"])
 
-    ai_ready = sum(
-        1
-        for item in results
-        if item["ai_ready"]
-    )
+    ai_ready = sum(1 for item in results if item["ai_ready"])
 
-    failed = sum(
-        1
-        for item in results
-        if item["error"]
-    )
+    failed = sum(1 for item in results if item["error"])
 
     blocked = total - ai_ready - failed
 
     reason_counter: Counter[str] = Counter()
 
     for item in results:
-        for reason in item[
-            "validation_reasons"
-        ]:
+        for reason in item["validation_reasons"]:
             reason_counter[reason] += 1
 
     print()
@@ -199,18 +159,10 @@ def print_summary(
         print()
         print("Validation issues:")
 
-        for reason, count in (
-            reason_counter.most_common()
-        ):
-            print(
-                f"  {reason}: {count}"
-            )
+        for reason, count in reason_counter.most_common():
+            print(f"  {reason}: {count}")
 
-    failed_items = [
-        item
-        for item in results
-        if item["error"]
-    ]
+    failed_items = [item for item in results if item["error"]]
 
     if failed_items:
         print()
@@ -224,12 +176,7 @@ def print_summary(
             )
 
     blocked_items = [
-        item
-        for item in results
-        if (
-            item["parsed"]
-            and not item["ai_ready"]
-        )
+        item for item in results if (item["parsed"] and not item["ai_ready"])
     ]
 
     if blocked_items:
@@ -237,9 +184,7 @@ def print_summary(
         print("Blocked pages:")
 
         for item in blocked_items:
-            reasons = ", ".join(
-                item["validation_reasons"]
-            )
+            reasons = ", ".join(item["validation_reasons"])
 
             print(
                 f"  {item['page_id']} | "
@@ -249,65 +194,33 @@ def print_summary(
             )
 
 
-def write_report(
-    *,
-    results: list[dict[str, Any]],
-    output_path: str,
-) -> None:
+def write_report(*, results: list[dict[str, Any]], output_path: str) -> None:
     path = Path(output_path)
 
-    path.parent.mkdir(
-        parents=True,
-        exist_ok=True,
-    )
+    path.parent.mkdir(parents=True, exist_ok=True)
 
     payload = {
         "summary": {
             "total_pages": len(results),
-            "parsed_pages": sum(
-                1
-                for item in results
-                if item["parsed"]
-            ),
-            "ai_ready_pages": sum(
-                1
-                for item in results
-                if item["ai_ready"]
-            ),
-            "failed_pages": sum(
-                1
-                for item in results
-                if item["error"]
-            ),
+            "parsed_pages": sum(1 for item in results if item["parsed"]),
+            "ai_ready_pages": sum(1 for item in results if item["ai_ready"]),
+            "failed_pages": sum(1 for item in results if item["error"]),
         },
         "pages": results,
     }
 
-    path.write_text(
-        json.dumps(
-            payload,
-            ensure_ascii=False,
-            indent=2,
-        ),
-        encoding="utf-8",
-    )
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description=(
-            "Audit Confluence knowledge metadata "
-            "without indexing content."
-        )
+        description=("Audit Confluence knowledge metadata " "without indexing content.")
     )
 
     parser.add_argument(
         "--page-ids-file",
         required=True,
-        help=(
-            "Text file containing one Confluence "
-            "page ID per line."
-        ),
+        help=("Text file containing one Confluence " "page ID per line."),
     )
 
     parser.add_argument(
@@ -322,31 +235,19 @@ def parse_args() -> argparse.Namespace:
 async def main() -> None:
     args = parse_args()
 
-    page_ids = read_page_ids(
-        args.page_ids_file
-    )
+    page_ids = read_page_ids(args.page_ids_file)
 
     if not page_ids:
-        raise RuntimeError(
-            "No Confluence page IDs were provided."
-        )
+        raise RuntimeError("No Confluence page IDs were provided.")
 
-    results = await run_audit(
-        page_ids
-    )
+    results = await run_audit(page_ids)
 
     print_summary(results)
 
-    write_report(
-        results=results,
-        output_path=args.output,
-    )
+    write_report(results=results, output_path=args.output)
 
     print()
-    print(
-        f"Detailed report written to: "
-        f"{args.output}"
-    )
+    print(f"Detailed report written to: " f"{args.output}")
 
 
 if __name__ == "__main__":

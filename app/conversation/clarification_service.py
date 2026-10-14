@@ -1,11 +1,7 @@
 from __future__ import annotations
 
 from app.ai.base import StructuredLLM
-from app.conversation.schemas import (
-    ClarificationQuestion,
-    ConversationUnderstanding,
-)
-
+from app.conversation.schemas import ClarificationQuestion, ConversationUnderstanding
 
 CLARIFICATION_SYSTEM_PROMPT = """
 You are the clarification-question component for a governed
@@ -36,11 +32,7 @@ Rules:
 
 
 class ClarificationGenerationService:
-    def __init__(
-        self,
-        *,
-        llm: StructuredLLM,
-    ) -> None:
+    def __init__(self, *, llm: StructuredLLM) -> None:
         self.llm = llm
 
     async def generate(
@@ -52,15 +44,10 @@ class ClarificationGenerationService:
         understanding: ConversationUnderstanding,
         language: str | None,
     ) -> ClarificationQuestion:
-        normalized_field = str(
-            missing_field
-            or ""
-        ).strip()
+        normalized_field = str(missing_field or "").strip()
 
         if not normalized_field:
-            raise ValueError(
-                "missing_field cannot be empty."
-            )
+            raise ValueError("missing_field cannot be empty.")
 
         user_prompt = self._build_prompt(
             original_message=original_message,
@@ -70,34 +57,20 @@ class ClarificationGenerationService:
             language=language,
         )
 
-        result = (
-            await self.llm.generate_structured(
-                system_prompt=(
-                    CLARIFICATION_SYSTEM_PROMPT
-                ),
-                user_prompt=user_prompt,
-                response_model=(
-                    ClarificationQuestion
-                ),
-            )
+        result = await self.llm.generate_structured(
+            system_prompt=(CLARIFICATION_SYSTEM_PROMPT),
+            user_prompt=user_prompt,
+            response_model=(ClarificationQuestion),
         )
 
-        question = (
-            result.question
-            or ""
-        ).strip()
+        question = (result.question or "").strip()
 
         if not question:
             raise RuntimeError(
-                "Clarification generation returned "
-                "an empty question."
+                "Clarification generation returned " "an empty question."
             )
 
-        return result.model_copy(
-            update={
-                "question": question,
-            }
-        )
+        return result.model_copy(update={"question": question})
 
     @staticmethod
     def _build_prompt(
@@ -108,17 +81,9 @@ class ClarificationGenerationService:
         understanding: ConversationUnderstanding,
         language: str | None,
     ) -> str:
-        domain = getattr(
-            understanding.domain,
-            "value",
-            understanding.domain,
-        )
+        domain = getattr(understanding.domain, "value", understanding.domain)
 
-        task = getattr(
-            understanding.task,
-            "value",
-            understanding.task,
-        )
+        task = getattr(understanding.task, "value", understanding.task)
 
         return f"""
 CURRENT USER MESSAGE

@@ -13,10 +13,7 @@ from app.runtime.context import (
     IdentityState,
     RuntimeContext,
 )
-from app.runtime.eligibility import (
-    EligibilityState,
-    KnowledgeEligibilityService,
-)
+from app.runtime.eligibility import EligibilityState, KnowledgeEligibilityService
 
 
 def make_metadata(
@@ -55,21 +52,14 @@ def test_afghan_nationality_in_iran_matches_afghan_kyc_article():
     context = RuntimeContext(
         identity_state=IdentityState.ANONYMOUS,
         nationality=ContextValue(
-            value="AF",
-            source="USER_DECLARED",
-            trust=ContextTrust.DECLARED,
+            value="AF", source="USER_DECLARED", trust=ContextTrust.DECLARED
         ),
         country_of_residence=ContextValue(
-            value="IR",
-            source="USER_DECLARED",
-            trust=ContextTrust.DECLARED,
+            value="IR", source="USER_DECLARED", trust=ContextTrust.DECLARED
         ),
     )
 
-    result = KnowledgeEligibilityService().evaluate(
-        metadata,
-        context,
-    )
+    result = KnowledgeEligibilityService().evaluate(metadata, context)
 
     assert result.state == EligibilityState.ELIGIBLE
     assert result.eligible is True
@@ -86,21 +76,14 @@ def test_afghan_nationality_in_iran_matches_iran_residence_article():
     context = RuntimeContext(
         identity_state=IdentityState.ANONYMOUS,
         nationality=ContextValue(
-            value="AF",
-            source="USER_DECLARED",
-            trust=ContextTrust.DECLARED,
+            value="AF", source="USER_DECLARED", trust=ContextTrust.DECLARED
         ),
         country_of_residence=ContextValue(
-            value="IR",
-            source="USER_DECLARED",
-            trust=ContextTrust.DECLARED,
+            value="IR", source="USER_DECLARED", trust=ContextTrust.DECLARED
         ),
     )
 
-    result = KnowledgeEligibilityService().evaluate(
-        metadata,
-        context,
-    )
+    result = KnowledgeEligibilityService().evaluate(metadata, context)
 
     assert result.state == EligibilityState.ELIGIBLE
     assert result.eligible is True
@@ -116,16 +99,11 @@ def test_country_article_asks_for_exact_missing_context():
     context = RuntimeContext(
         identity_state=IdentityState.ANONYMOUS,
         nationality=ContextValue(
-            value="AF",
-            source="USER_DECLARED",
-            trust=ContextTrust.DECLARED,
+            value="AF", source="USER_DECLARED", trust=ContextTrust.DECLARED
         ),
     )
 
-    result = KnowledgeEligibilityService().evaluate(
-        metadata,
-        context,
-    )
+    result = KnowledgeEligibilityService().evaluate(metadata, context)
 
     assert result.state == EligibilityState.CLARIFICATION_REQUIRED
     assert result.eligible is False
@@ -142,16 +120,11 @@ def test_country_market_mismatch_is_blocked():
     context = RuntimeContext(
         identity_state=IdentityState.ANONYMOUS,
         nationality=ContextValue(
-            value="AF",
-            source="USER_DECLARED",
-            trust=ContextTrust.DECLARED,
+            value="AF", source="USER_DECLARED", trust=ContextTrust.DECLARED
         ),
     )
 
-    result = KnowledgeEligibilityService().evaluate(
-        metadata,
-        context,
-    )
+    result = KnowledgeEligibilityService().evaluate(metadata, context)
 
     assert result.state == EligibilityState.BLOCKED
     assert result.eligible is False
@@ -159,18 +132,11 @@ def test_country_market_mismatch_is_blocked():
 
 
 def test_anonymous_user_cannot_access_client_audience():
-    metadata = make_metadata(
-        audience=Audience.CLIENT,
-    )
+    metadata = make_metadata(audience=Audience.CLIENT)
 
-    context = RuntimeContext(
-        identity_state=IdentityState.ANONYMOUS,
-    )
+    context = RuntimeContext(identity_state=IdentityState.ANONYMOUS)
 
-    result = KnowledgeEligibilityService().evaluate(
-        metadata,
-        context,
-    )
+    result = KnowledgeEligibilityService().evaluate(metadata, context)
 
     assert result.state == EligibilityState.AUTHENTICATION_REQUIRED
     assert result.eligible is False
@@ -186,16 +152,11 @@ def test_lookup_rejects_declared_client_id():
     context = RuntimeContext(
         identity_state=IdentityState.AUTHENTICATED,
         client_id=ContextValue(
-            value="12345",
-            source="USER_INPUT",
-            trust=ContextTrust.DECLARED,
+            value="12345", source="USER_INPUT", trust=ContextTrust.DECLARED
         ),
     )
 
-    result = KnowledgeEligibilityService().evaluate(
-        metadata,
-        context,
-    )
+    result = KnowledgeEligibilityService().evaluate(metadata, context)
 
     assert result.state == EligibilityState.AUTHENTICATION_REQUIRED
     assert result.eligible is False
@@ -211,16 +172,11 @@ def test_lookup_accepts_verified_client_identity():
     context = RuntimeContext(
         identity_state=IdentityState.AUTHENTICATED,
         client_id=ContextValue(
-            value="12345",
-            source="CLIENT_PORTAL",
-            trust=ContextTrust.VERIFIED,
+            value="12345", source="CLIENT_PORTAL", trust=ContextTrust.VERIFIED
         ),
     )
 
-    result = KnowledgeEligibilityService().evaluate(
-        metadata,
-        context,
-    )
+    result = KnowledgeEligibilityService().evaluate(metadata, context)
 
     assert result.state == EligibilityState.LOOKUP_REQUIRED
     assert result.eligible is True

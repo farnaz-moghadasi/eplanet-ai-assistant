@@ -13,16 +13,12 @@ def read_page_ids(path: str) -> list[str]:
     file_path = Path(path)
 
     if not file_path.exists():
-        raise FileNotFoundError(
-            f"Page ID file not found: {file_path}"
-        )
+        raise FileNotFoundError(f"Page ID file not found: {file_path}")
 
     result: list[str] = []
     seen: set[str] = set()
 
-    for raw_line in file_path.read_text(
-        encoding="utf-8"
-    ).splitlines():
+    for raw_line in file_path.read_text(encoding="utf-8").splitlines():
         page_id = raw_line.strip()
 
         if not page_id or page_id.startswith("#"):
@@ -52,71 +48,40 @@ def print_report(report) -> None:
     print("KNOWLEDGE INGESTION REPORT")
     print("=" * 72)
 
-    print(
-        f"Requested pages : {report.requested_pages}"
-    )
-    print(
-        f"Successful pages: {report.successful_pages}"
-    )
-    print(
-        f"Indexed pages   : {report.indexed_pages}"
-    )
-    print(
-        f"Skipped pages   : {report.skipped_pages}"
-    )
-    print(
-        f"Failed pages    : {report.failed_pages}"
-    )
-    print(
-        f"Total chunks    : {report.total_chunks}"
-    )
+    print(f"Requested pages : {report.requested_pages}")
+    print(f"Successful pages: {report.successful_pages}")
+    print(f"Indexed pages   : {report.indexed_pages}")
+    print(f"Skipped pages   : {report.skipped_pages}")
+    print(f"Failed pages    : {report.failed_pages}")
+    print(f"Total chunks    : {report.total_chunks}")
 
     skipped = [
-        item
-        for item in report.page_results
-        if item.success and not item.ai_ready
+        item for item in report.page_results if item.success and not item.ai_ready
     ]
 
-    failed = [
-        item
-        for item in report.page_results
-        if not item.success
-    ]
+    failed = [item for item in report.page_results if not item.success]
 
     if skipped:
         print()
         print("Skipped pages:")
 
         for item in skipped:
-            reasons = ", ".join(
-                item.validation_reasons
-            )
+            reasons = ", ".join(item.validation_reasons)
 
-            print(
-                f"  {item.page_id} | "
-                f"{item.title or '-'} | "
-                f"{reasons}"
-            )
+            print(f"  {item.page_id} | " f"{item.title or '-'} | " f"{reasons}")
 
     if failed:
         print()
         print("Failed pages:")
 
         for item in failed:
-            print(
-                f"  {item.page_id} | "
-                f"{item.title or '-'} | "
-                f"{item.error}"
-            )
+            print(f"  {item.page_id} | " f"{item.title or '-'} | " f"{item.error}")
 
 
 def save_report(report, output_path: str) -> None:
     path = Path(output_path)
 
-    path.parent.mkdir(
-        parents=True,
-        exist_ok=True,
-    )
+    path.parent.mkdir(parents=True, exist_ok=True)
 
     payload = {
         "requested_pages": report.requested_pages,
@@ -132,39 +97,23 @@ def save_report(report, output_path: str) -> None:
                 "success": item.success,
                 "ai_ready": item.ai_ready,
                 "chunk_count": item.chunk_count,
-                "validation_reasons": (
-                    item.validation_reasons
-                ),
+                "validation_reasons": (item.validation_reasons),
                 "error": item.error,
             }
             for item in report.page_results
         ],
     }
 
-    path.write_text(
-        json.dumps(
-            payload,
-            ensure_ascii=False,
-            indent=2,
-        ),
-        encoding="utf-8",
-    )
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
 
-    parser.add_argument(
-        "--page-ids-file",
-        required=True,
-    )
+    parser.add_argument("--page-ids-file", required=True)
 
     parser.add_argument(
-        "--output",
-        default=(
-            "artifacts/"
-            "knowledge_ingestion_report.json"
-        ),
+        "--output", default=("artifacts/" "knowledge_ingestion_report.json")
     )
 
     return parser.parse_args()
@@ -173,45 +122,27 @@ def parse_args() -> argparse.Namespace:
 async def main() -> None:
     args = parse_args()
 
-    page_ids = read_page_ids(
-        args.page_ids_file
-    )
+    page_ids = read_page_ids(args.page_ids_file)
 
     if not page_ids:
-        raise RuntimeError(
-            "No Confluence page IDs provided."
-        )
+        raise RuntimeError("No Confluence page IDs provided.")
 
-    print(
-        f"Starting ingestion for "
-        f"{len(page_ids)} unique pages..."
-    )
+    print(f"Starting ingestion for " f"{len(page_ids)} unique pages...")
 
     retriever = BM25Retriever()
 
     service = KnowledgeIngestionService(
-        confluence_client=(
-            build_confluence_client()
-        ),
-        retriever=retriever,
+        confluence_client=(build_confluence_client()), retriever=retriever
     )
 
-    report = await service.sync_pages(
-        page_ids
-    )
+    report = await service.sync_pages(page_ids)
 
     print_report(report)
 
-    save_report(
-        report,
-        args.output,
-    )
+    save_report(report, args.output)
 
     print()
-    print(
-        "Report written to: "
-        f"{args.output}"
-    )
+    print("Report written to: " f"{args.output}")
 
 
 if __name__ == "__main__":
